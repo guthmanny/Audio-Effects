@@ -10,6 +10,33 @@
 
 namespace
 {
+void ensureEffectInputUnmuted (juce::StandalonePluginHolder& holder)
+{
+    if (auto* props = holder.settings.get())
+    {
+        if (! props->containsKey ("shouldMuteInput"))
+            holder.getMuteInputValue().setValue (false);
+    }
+    else
+    {
+        holder.getMuteInputValue().setValue (false);
+    }
+}
+
+void restartCurrentAudioDevice (juce::AudioDeviceManager& deviceManager)
+{
+    if (deviceManager.getCurrentAudioDevice() == nullptr)
+        return;
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager.getAudioDeviceSetup (setup);
+
+    if (setup.inputDeviceName.isEmpty() && setup.outputDeviceName.isEmpty())
+        return;
+
+    deviceManager.setAudioDeviceSetup (setup, false);
+}
+
 class NativeStandaloneFilterWindow : public juce::StandaloneFilterWindow
 {
 public:
@@ -37,6 +64,26 @@ public:
             if (auto* button = dynamic_cast<juce::TextButton*> (getChildComponent (i)))
                 if (button->getButtonText() == "Options")
                     button->setVisible (false);
+
+        if (auto* holder = juce::StandalonePluginHolder::getInstance())
+        {
+            ensureEffectInputUnmuted (*holder);
+
+            // ASIO often needs a device reopen before callbacks deliver audio on cold start.
+            juce::Component::SafePointer<NativeStandaloneFilterWindow> safeWindow (this);
+            juce::Timer::callAfterDelay (300, [safeWindow]()
+            {
+                if (safeWindow == nullptr)
+                    return;
+
+                auto& deviceManager = safeWindow->getDeviceManager();
+
+               #if JUCE_WINDOWS
+                if (deviceManager.getCurrentAudioDeviceType() == "ASIO")
+                    restartCurrentAudioDevice (deviceManager);
+               #endif
+            });
+        }
     }
 
 private:
