@@ -1,35 +1,20 @@
 /*
   ==============================================================================
 
-    This code is based on the contents of the book: "Audio Effects: Theory,
-    Implementation and Application" by Joshua D. Reiss and Andrew P. McPherson.
-
-    Code by Juan Gil <http://juangil.com/>.
-    Copyright (C) 2017 Juan Gil.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+    Chorus plugin — DSP via NuDSP camel/chorus.
 
   ==============================================================================
 */
 
 #pragma once
 
-#define _USE_MATH_DEFINES
-#include <cmath>
-
 #include "../JuceLibraryCode/JuceHeader.h"
 #include "PluginParameter.h"
+
+#include "nudsp/extensions/camel/chorus.hpp"
+
+#include <array>
+#include <memory>
 
 //==============================================================================
 
@@ -39,20 +24,13 @@ public:
     //==============================================================================
 
     ChorusAudioProcessor();
-    ~ChorusAudioProcessor();
+    ~ChorusAudioProcessor() override;
 
     //==============================================================================
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock (AudioSampleBuffer&, MidiBuffer&) override;
-
-    //==============================================================================
-
-
-
-
-
 
     //==============================================================================
 
@@ -89,69 +67,25 @@ public:
 
     //==============================================================================
 
-
-
-
-
-
-    //==============================================================================
-
-    StringArray waveformItemsUI = {
-        "Sine",
-        "Triangle",
-        "Sawtooth (rising)",
-        "Sawtooth (falling)"
-    };
-
-    enum waveformIndex {
-        waveformSine = 0,
-        waveformTriangle,
-        waveformSawtooth,
-        waveformInverseSawtooth,
-    };
-
-    //======================================
-
-    StringArray interpolationItemsUI = {
-        "None",
-        "Linear",
-        "Cubic"
-    };
-
-    enum interpolationIndex {
-        interpolationNearestNeighbour = 0,
-        interpolationLinear,
-        interpolationCubic,
-    };
-
-    //======================================
-
-    AudioSampleBuffer delayBuffer;
-    int delayBufferSamples;
-    int delayBufferChannels;
-    int delayWritePosition;
-
-    float lfoPhase;
-    float inverseSampleRate;
-    float twoPi;
-
-    float lfo (float phase, int waveform);
-
-    //======================================
-
     PluginParametersManager parameters;
 
+    PluginParameterLinSlider paramRate;
     PluginParameterLinSlider paramDelay;
-    PluginParameterLinSlider paramWidth;
-    PluginParameterLinSlider paramDepth;
-    PluginParameterComboBox paramNumVoices;
-    PluginParameterLinSlider paramFrequency;
-    PluginParameterComboBox paramWaveform;
-    PluginParameterComboBox paramInterpolation;
-    PluginParameterToggle paramStereo;
+    PluginParameterLinSlider paramAmount;
+    PluginParameterLinSlider paramDry;
+    PluginParameterLinSlider paramWet;
+    PluginParameterLinSlider paramFeedback;
+    PluginParameterToggle paramBypass;
 
 private:
     //==============================================================================
+
+    static constexpr int maxChannels = 2;
+
+    void updateChorusParameters();
+    void ensureChorusInstances (int numChannels);
+
+    std::array<std::unique_ptr<nudsp::camel::ChorusF32>, maxChannels> choruses;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChorusAudioProcessor)
 };

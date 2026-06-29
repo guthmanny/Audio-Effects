@@ -35,6 +35,11 @@ endif()
 juce_add_module(${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/modules/juce_atom_theme
                 ALIAS_NAMESPACE juce)
 
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+add_subdirectory("${CMAKE_SOURCE_DIR}/../third_party/NuDSP"
+               "${CMAKE_BINARY_DIR}/NuDSP")
+
 juce_add_plugin(Chorus
     PLUGIN_MANUFACTURER_CODE Juce
     PLUGIN_CODE Chrs
@@ -65,6 +70,7 @@ target_compile_definitions(Chorus
 target_link_libraries(Chorus PRIVATE
     juce::juce_audio_utils
     juce::juce_atom_theme
+    nudsp
     PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
