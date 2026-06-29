@@ -7,3 +7,7 @@
 [submodule "third_party/AtomTheme"]
 	path = third_party/AtomTheme
 	url = https://github.com/guthmanny/AtomTheme.git
+[submodule "third_party/NuDSP"]
+	path = third_party/NuDSP
+	url = https://github.com/guthmanny/NuDSP.git
+	branch = develop
