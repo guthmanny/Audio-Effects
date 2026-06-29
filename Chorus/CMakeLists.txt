@@ -1,8 +1,18 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.22)
 project(Chorus VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 
-find_package(JUCE CONFIG REQUIRED)
+# JUCE must be built from source via add_subdirectory (find_package needs a prior install).
+set(JUCE_PATH "${CMAKE_SOURCE_DIR}/../JUCE" CACHE PATH "Path to JUCE source")
+if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
+    if(EXISTS "D:/source/JUCE/CMakeLists.txt")
+        set(JUCE_PATH "D:/source/JUCE")
+    else()
+        message(FATAL_ERROR
+            "JUCE not found. Set JUCE_PATH to a JUCE 7+ source tree with CMake support.")
+    endif()
+endif()
+add_subdirectory("${JUCE_PATH}" "${CMAKE_BINARY_DIR}/JUCE")
 
 juce_add_module(${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/modules/juce_atom_theme
                 ALIAS_NAMESPACE juce)
