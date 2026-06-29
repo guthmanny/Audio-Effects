@@ -1,0 +1,29 @@
+# .gitignore
+# 构建目录
+build/
+build-asan/
+bin/
+DerivedData/
+*.build/
+
+# IDE文件
+.vscode/
+.idea/
+*.xcworkspace/
+*.xcodeproj/
+
+# 平台特定
+*.app
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 忽略下载的依赖
+deps/
+_deps/
+third_party/
+extern/
+
+# CI 本地冒烟测试的构建产物
+ci/_build*/

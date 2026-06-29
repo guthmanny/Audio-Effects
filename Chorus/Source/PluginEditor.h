@@ -23,6 +23,7 @@
 #pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include <juce_atom_theme/juce_atom_theme.h>
 #include "PluginProcessor.h"
 
 //==============================================================================
@@ -30,52 +31,62 @@
 class ChorusAudioProcessorEditor : public AudioProcessorEditor
 {
 public:
-    //==============================================================================
+  //==============================================================================
 
-    ChorusAudioProcessorEditor (ChorusAudioProcessor&);
-    ~ChorusAudioProcessorEditor();
+  ChorusAudioProcessorEditor(ChorusAudioProcessor &);
+  ~ChorusAudioProcessorEditor();
 
-    //==============================================================================
+  //==============================================================================
 
-    void paint (Graphics&) override;
-    void resized() override;
+  void paint(Graphics &) override;
+  void resized() override;
+
+#if JucePlugin_Build_Standalone
+  void showStandaloneOptionsMenu();
+#endif
 
 private:
-    //==============================================================================
+  //==============================================================================
 
-    ChorusAudioProcessor& processor;
+  ChorusAudioProcessor &processor;
 
-    enum {
-        editorWidth = 500,
-        editorMargin = 10,
-        editorPadding = 10,
+  enum
+  {
+    editorWidth = 600,
+    editorMargin = 10,
+    editorPadding = 10,
 
-        sliderTextEntryBoxWidth = 100,
-        sliderTextEntryBoxHeight = 25,
-        sliderHeight = 25,
-        buttonHeight = 25,
-        comboBoxHeight = 25,
-        labelWidth = 100,
-    };
+    sliderTextEntryBoxWidth = 100,
+    sliderTextEntryBoxHeight = 50,
+    sliderHeight = 50,
+    buttonHeight = 50,
+    comboBoxHeight = 50,
+    labelWidth = 200,
+  };
 
-    //======================================
+  //======================================
 
-    OwnedArray<Slider> sliders;
-    OwnedArray<ToggleButton> toggles;
-    OwnedArray<ComboBox> comboBoxes;
+  OwnedArray<atom::Slider> sliders;
+  OwnedArray<atom::ToggleButton> toggles;
+  OwnedArray<atom::ComboBox> comboBoxes;
 
-    OwnedArray<Label> labels;
-    Array<Component*> components;
+  OwnedArray<Label> labels;
+  Array<Component *> components;
 
-    typedef AudioProcessorValueTreeState::SliderAttachment SliderAttachment;
-    typedef AudioProcessorValueTreeState::ButtonAttachment ButtonAttachment;
-    typedef AudioProcessorValueTreeState::ComboBoxAttachment ComboBoxAttachment;
+  typedef AudioProcessorValueTreeState::SliderAttachment SliderAttachment;
+  typedef AudioProcessorValueTreeState::ButtonAttachment ButtonAttachment;
+  typedef AudioProcessorValueTreeState::ComboBoxAttachment ComboBoxAttachment;
 
-    OwnedArray<SliderAttachment> sliderAttachments;
-    OwnedArray<ButtonAttachment> buttonAttachments;
-    OwnedArray<ComboBoxAttachment> comboBoxAttachments;
+  OwnedArray<SliderAttachment> sliderAttachments;
+  OwnedArray<ButtonAttachment> buttonAttachments;
+  OwnedArray<ComboBoxAttachment> comboBoxAttachments;
 
-    //==============================================================================
+  //==============================================================================
+  AtomLookAndFeel atomLookAndFeel { atom::ThemeType::Dark };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChorusAudioProcessorEditor)
+#if JucePlugin_Build_Standalone
+  atom::ShapeButton settingsButton { "settingsButton", AtomIconLibrary::Icon::CogWheel };
+#endif
+
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ChorusAudioProcessorEditor)
 };
