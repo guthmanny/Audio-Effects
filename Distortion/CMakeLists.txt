@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(Distortion VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 
+# Steinberg ASIO SDK (Windows only).
 if(WIN32)
     set(ASIO_SDK_PATH "" CACHE PATH "Path to Steinberg ASIO SDK root")
 
@@ -24,32 +25,68 @@ if(WIN32)
     endif()
 endif()
 
+# JUCE discovery (Windows / macOS / Linux).
+set(JUCE_PATH "${CMAKE_SOURCE_DIR}/../JUCE" CACHE PATH "Path to JUCE 7+ source tree")
+
+set(_distortion_juce_candidates "${JUCE_PATH}")
+
+if(DEFINED ENV{JUCE_PATH})
+    list(PREPEND _distortion_juce_candidates "$ENV{JUCE_PATH}")
+endif()
+
+list(APPEND _distortion_juce_candidates
+    "${CMAKE_SOURCE_DIR}/../JUCE"
+    "$ENV{HOME}/JUCE"
+    "$ENV{HOME}/source/JUCE")
+
 if(WIN32)
-    set(JUCE_PATH "${CMAKE_SOURCE_DIR}/../JUCE" CACHE PATH "Path to JUCE source")
-    if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
-        if(EXISTS "D:/source/JUCE/CMakeLists.txt")
-            set(JUCE_PATH "D:/source/JUCE")
-        else()
-            message(FATAL_ERROR
-                "JUCE not found. Set JUCE_PATH to a JUCE 7+ source tree with CMake support.")
-        endif()
+    list(APPEND _distortion_juce_candidates "D:/source/JUCE" "C:/source/JUCE")
+elseif(APPLE)
+    list(APPEND _distortion_juce_candidates "/opt/homebrew/opt/juce" "/usr/local/opt/juce")
+endif()
+
+set(_distortion_juce_resolved "")
+foreach(_distortion_juce_candidate IN LISTS _distortion_juce_candidates)
+    if(_distortion_juce_candidate AND EXISTS "${_distortion_juce_candidate}/CMakeLists.txt")
+        set(_distortion_juce_resolved "${_distortion_juce_candidate}")
+        break()
     endif()
+endforeach()
+
+if(_distortion_juce_resolved)
+    set(JUCE_PATH "${_distortion_juce_resolved}" CACHE PATH "Path to JUCE 7+ source tree" FORCE)
+    message(STATUS "Using JUCE source tree: ${JUCE_PATH}")
     add_subdirectory("${JUCE_PATH}" "${CMAKE_BINARY_DIR}/JUCE")
 else()
-    list(PREPEND CMAKE_PREFIX_PATH "/usr/local")
+    if(APPLE)
+        list(PREPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
+    else()
+        list(PREPEND CMAKE_PREFIX_PATH "/usr/local")
+    endif()
+
     find_package(JUCE CONFIG QUIET)
 
     if(JUCE_FOUND)
         message(STATUS "Using installed JUCE: ${JUCE_DIR}")
     else()
-        set(JUCE_PATH "${CMAKE_SOURCE_DIR}/../JUCE" CACHE PATH "Path to JUCE source")
-        if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
-            message(FATAL_ERROR
-                "JUCE not found under /usr/local and no source tree at ${JUCE_PATH}. "
-                "Install JUCE to /usr/local or set JUCE_PATH.")
+        message(FATAL_ERROR
+            "JUCE not found.\n"
+            "  - Clone JUCE 7+ to: ${CMAKE_SOURCE_DIR}/../JUCE\n"
+            "  - Or install JUCE and ensure CMake can find it (/usr/local, /opt/homebrew)\n"
+            "  - Or pass: -DJUCE_PATH=/path/to/JUCE")
+    endif()
+endif()
+
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(ALSA QUIET alsa)
+        if(NOT ALSA_FOUND)
+            message(WARNING
+                "ALSA development libraries not found (pkg-config: alsa).\n"
+                "On Debian/Ubuntu: sudo apt install libasound2-dev\n"
+                "On Fedora: sudo dnf install alsa-lib-devel")
         endif()
-        message(STATUS "Using JUCE source tree: ${JUCE_PATH}")
-        add_subdirectory("${JUCE_PATH}" "${CMAKE_BINARY_DIR}/JUCE")
     endif()
 endif()
 
@@ -61,11 +98,24 @@ set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_SOURCE_DIR}/../third_party/NuDSP"
                "${CMAKE_BINARY_DIR}/NuDSP")
 
+if(WIN32)
+    set(DISTORTION_VST3_COPY_DIR "$ENV{LOCALAPPDATA}/Programs/Common/VST3")
+elseif(APPLE)
+    set(DISTORTION_VST3_COPY_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
+else()
+    set(DISTORTION_VST3_COPY_DIR "$ENV{HOME}/.vst3")
+endif()
+
+message(STATUS "VST3 install dir: ${DISTORTION_VST3_COPY_DIR}")
+
 juce_add_plugin(Distortion
     PLUGIN_MANUFACTURER_CODE Juce
     PLUGIN_CODE Dstr
-    FORMATS Standalone
+    FORMATS Standalone VST3
     PRODUCT_NAME "Distortion"
+    VST3_CATEGORIES Fx Distortion
+    COPY_PLUGIN_AFTER_BUILD TRUE
+    VST3_COPY_DIR "${DISTORTION_VST3_COPY_DIR}"
 )
 
 juce_generate_juce_header(Distortion)
@@ -82,9 +132,12 @@ target_sources(Distortion PRIVATE
     Source/DistortionFooterComponent.cpp
     Source/DistortionFooterComponent.h
     Source/PluginParameter.h
-    Source/StandaloneMain.cpp
     ${ATOM_COLLECTIONS_APP_DIR}/AudioSettingsPanel.cpp
     ${ATOM_COLLECTIONS_APP_DIR}/AudioSettingsPanel.h
+)
+
+target_sources(Distortion_Standalone PRIVATE
+    Source/StandaloneMain.cpp
 )
 
 target_include_directories(Distortion PRIVATE "${ATOM_COLLECTIONS_APP_DIR}")
@@ -94,8 +147,10 @@ target_compile_definitions(Distortion
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
-    PRIVATE
-        JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
+)
+
+target_compile_definitions(Distortion_Standalone PRIVATE
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
 )
 
 if(WIN32)
