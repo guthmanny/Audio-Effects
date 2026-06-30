@@ -1,81 +1,87 @@
-/*
-  ==============================================================================
-
-    Code by Juan Gil <http://juangil.com/>.
-    Copyright (C) 2017 Juan Gil.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-  ==============================================================================
-*/
-
 #pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include <juce_atom_theme/juce_atom_theme.h>
+
+#include "DistortionFooterComponent.h"
+#include "DistortionHeaderComponent.h"
 #include "PluginProcessor.h"
 
-//==============================================================================
-
-class DistortionAudioProcessorEditor : public AudioProcessorEditor
+class DistortionBodyContent final : public juce::Component
 {
 public:
-    //==============================================================================
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colours::black);
+    }
+};
 
-    DistortionAudioProcessorEditor (DistortionAudioProcessor&);
-    ~DistortionAudioProcessorEditor();
+class DistortionAudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                             private juce::Timer
+#if JucePlugin_Build_Standalone
+                                             , private juce::DarkModeSettingListener
+#endif
+{
+public:
+    explicit DistortionAudioProcessorEditor (DistortionAudioProcessor&);
+    ~DistortionAudioProcessorEditor() override;
 
-    //==============================================================================
-
-    void paint (Graphics&) override;
+    void paint (juce::Graphics& g) override;
     void resized() override;
 
+#if JucePlugin_Build_Standalone
+    void showStandaloneOptionsMenu();
+    void showAudioSettingsDialog();
+#endif
+
 private:
-    //==============================================================================
+    void timerCallback() override;
+#if JucePlugin_Build_Standalone
+    void darkModeSettingChanged() override;
+    void applyAudioSettingsDialogTitleBarTheme();
+#endif
+    void applyZoom (float newZoom);
+    int getEditorWidth();
+    int getNaturalHeight() const noexcept;
+    int getHeaderHeight() const noexcept;
+    int getFooterHeight() const noexcept;
+    int getBodyContentHeight() const noexcept;
 
     DistortionAudioProcessor& processor;
 
-    enum {
-        editorWidth = 500,
-        editorMargin = 10,
-        editorPadding = 10,
+    static constexpr int headerBaseHeight = 80;
+    static constexpr int footerBaseHeight = 32;
+    static constexpr int sliderHeight = 50;
+    static constexpr int cardRowHeight = 48;
+    static constexpr int bodyPadding = 10;
+    static constexpr int bodyMargin = 20;
 
-        sliderTextEntryBoxWidth = 100,
-        sliderTextEntryBoxHeight = 25,
-        sliderHeight = 25,
-        buttonHeight = 25,
-        comboBoxHeight = 25,
-        labelWidth = 100,
-    };
+    float zoomFactor = 1.0f;
+    int bodyContentHeight = 0;
 
-    //======================================
+    AtomLookAndFeel atomLookAndFeel { atom::ThemeType::Dark };
+    DistortionHeaderComponent headerBar;
+    DistortionFooterComponent footerBar;
+    DistortionBodyContent bodyContent;
+    juce::Viewport bodyViewport;
 
-    OwnedArray<Slider> sliders;
-    OwnedArray<ToggleButton> toggles;
-    OwnedArray<ComboBox> comboBoxes;
+    juce::OwnedArray<atom::Slider> sliders;
+    juce::OwnedArray<atom::ToggleButton> toggles;
+    juce::OwnedArray<atom::ComboBox> comboBoxes;
+    juce::OwnedArray<juce::Component> settingRows;
+    juce::Array<juce::Component*> bodyComponents;
 
-    OwnedArray<Label> labels;
-    Array<Component*> components;
+    using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
-    typedef AudioProcessorValueTreeState::SliderAttachment SliderAttachment;
-    typedef AudioProcessorValueTreeState::ButtonAttachment ButtonAttachment;
-    typedef AudioProcessorValueTreeState::ComboBoxAttachment ComboBoxAttachment;
+    juce::OwnedArray<SliderAttachment> sliderAttachments;
+    juce::OwnedArray<ButtonAttachment> buttonAttachments;
+    juce::OwnedArray<ComboBoxAttachment> comboBoxAttachments;
 
-    OwnedArray<SliderAttachment> sliderAttachments;
-    OwnedArray<ButtonAttachment> buttonAttachments;
-    OwnedArray<ComboBoxAttachment> comboBoxAttachments;
-
-    //==============================================================================
+#if JucePlugin_Build_Standalone
+    juce::Component::SafePointer<juce::Component> audioSettingsDialog;
+#endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DistortionAudioProcessorEditor)
 };

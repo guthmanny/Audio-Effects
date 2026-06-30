@@ -1,35 +1,24 @@
 /*
   ==============================================================================
 
-    This code is based on the contents of the book: "Audio Effects: Theory,
-    Implementation and Application" by Joshua D. Reiss and Andrew P. McPherson.
-
-    Code by Juan Gil <http://juangil.com/>.
-    Copyright (C) 2017 Juan Gil.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+    Distortion plugin — DS+ opamp → diode clipper via NuDSP.
 
   ==============================================================================
 */
 
 #pragma once
 
-#define _USE_MATH_DEFINES
-#include <cmath>
-
 #include "../JuceLibraryCode/JuceHeader.h"
 #include "PluginParameter.h"
+
+#include "nudsp/amplitude/gain.hpp"
+#include "nudsp/amplitude/gain_f32.h"
+#include "nudsp/linear_circuits/ds_plus_opamp.hpp"
+#include "nudsp/nonlinear_circuits/diode_clipper.hpp"
+
+#include <array>
+#include <atomic>
+#include <memory>
 
 //==============================================================================
 
@@ -39,20 +28,13 @@ public:
     //==============================================================================
 
     DistortionAudioProcessor();
-    ~DistortionAudioProcessor();
+    ~DistortionAudioProcessor() override;
 
     //==============================================================================
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock (AudioSampleBuffer&, MidiBuffer&) override;
-
-    //==============================================================================
-
-
-
-
-
 
     //==============================================================================
 
@@ -76,7 +58,7 @@ public:
 
     bool acceptsMidi() const override;
     bool producesMidi() const override;
-    bool isMidiEffect () const override;
+    bool isMidiEffect() const override;
     double getTailLengthSeconds() const override;
 
     //==============================================================================
@@ -89,67 +71,54 @@ public:
 
     //==============================================================================
 
-
-
-
-
-
-    //==============================================================================
-
-    StringArray distortionTypeItemsUI = {
-        "Hard clipping",
-        "Soft clipping",
-        "Exponential",
-        "Full-wave rectifier",
-        "Half-wave rectifier"
-    };
-
-    enum distortionTypeIndex {
-        distortionTypeHardClipping = 0,
-        distortionTypeSoftClipping,
-        distortionTypeExponential,
-        distortionTypeFullWaveRectifier,
-        distortionTypeHalfWaveRectifier,
-    };
-
-    //======================================
-
-    class Filter : public IIRFilter
-    {
-    public:
-        void updateCoefficients (const double discreteFrequency,
-                                 const double gain) noexcept
-        {
-            jassert (discreteFrequency > 0);
-
-            double tan_half_wc = tan (discreteFrequency / 2.0);
-            double sqrt_gain = sqrt (gain);
-
-            coefficients = IIRCoefficients (/* b0 */ sqrt_gain * tan_half_wc + gain,
-                                            /* b1 */ sqrt_gain * tan_half_wc - gain,
-                                            /* b2 */ 0.0,
-                                            /* a0 */ sqrt_gain * tan_half_wc + 1.0,
-                                            /* a1 */ sqrt_gain * tan_half_wc - 1.0,
-                                            /* a2 */ 0.0);
-
-            setCoefficients (coefficients);
-        }
-    };
-
-    OwnedArray<Filter> filters;
-    void updateFilters();
-
-    //======================================
-
     PluginParametersManager parameters;
 
-    PluginParameterComboBox paramDistortionType;
     PluginParameterLinSlider paramInputGain;
+    PluginParameterLinSlider paramGateThreshold;
     PluginParameterLinSlider paramOutputGain;
-    PluginParameterLinSlider paramTone;
+    PluginParameterLinSlider paramDistortion;
+    PluginParameterToggle paramBypass;
+
+    float getMeterLevelMono() const noexcept { return meterMono.load(); }
+    float getMeterLevelLeft() const noexcept { return meterLeft.load(); }
+    float getMeterLevelRight() const noexcept { return meterRight.load(); }
 
 private:
     //==============================================================================
+
+    static constexpr int maxChannels = 2;
+
+    struct ChannelChain
+    {
+        std::unique_ptr<nudsp::DsPlusOpampF32> opamp;
+        std::unique_ptr<nudsp::DiodeClipperF32> clipper;
+    };
+
+    float readParameterValue (const String& paramId, float fallback) const;
+    void syncParametersFromValueTree();
+    void updateEffectParameters();
+    void ensureEffectInstances();
+
+    void processInputGain (AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
+    void processGate (AudioSampleBuffer& buffer, int numChannels, int numSamples, float thresholdDb);
+    void processOutputGain (const AudioSampleBuffer& inBuffer,
+                            AudioSampleBuffer& outBuffer,
+                            int numChannels,
+                            int numSamples,
+                            float gainDb);
+
+    std::array<ChannelChain, maxChannels> channelChains;
+    std::unique_ptr<nudsp::GainF32> outputGain;
+
+    AudioSampleBuffer outputBuffer;
+
+    double currentSampleRate = 44100.0;
+    std::array<float, maxChannels> gateEnvelope {};
+    std::array<float, maxChannels> gateGain { 1.0f, 1.0f };
+
+    std::atomic<float> meterMono { 0.0f };
+    std::atomic<float> meterLeft { 0.0f };
+    std::atomic<float> meterRight { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DistortionAudioProcessor)
 };
