@@ -243,8 +243,13 @@ void ChorusAudioProcessorEditor::applyZoom (float newZoom)
     const int width = getEditorWidth();
     const int height = getNaturalHeight();
 
+    // Fixed size: the editor (and therefore the Standalone window) is not
+    // freely stretchable. Size changes only happen via the footer VIEW zoom.
+    // min == max makes the host treat the editor as non-resizable, so the
+    // outer window always matches the editor bounds and no background mismatch
+    // can appear from dragging the window frame.
+    setResizeLimits (width, height, width, height);
     setSize (width, height);
-    setResizeLimits (width, height, juce::roundToInt (width * 1.5f), juce::roundToInt (height * 1.5f));
 
     bodyContent.setSize (width, getBodyContentHeight());
     resized();

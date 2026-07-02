@@ -12,15 +12,12 @@ namespace
 {
 void ensureEffectInputUnmuted (juce::StandalonePluginHolder& holder)
 {
+    // Chorus is an effect — it needs input audio. Always unmute, overriding
+    // JUCE's feedback-loop default and any persisted "shouldMuteInput=true".
+    holder.getMuteInputValue().setValue (false);
+
     if (auto* props = holder.settings.get())
-    {
-        if (! props->containsKey ("shouldMuteInput"))
-            holder.getMuteInputValue().setValue (false);
-    }
-    else
-    {
-        holder.getMuteInputValue().setValue (false);
-    }
+        props->setValue ("shouldMuteInput", false);
 }
 
 void restartCurrentAudioDevice (juce::AudioDeviceManager& deviceManager)
@@ -60,6 +57,14 @@ public:
         setUsingNativeTitleBar (true);
         atom::setNativeTitleBarDarkMode (*this);
 
+        // The window background colour was fixed at construction time (before the
+        // editor existed), so it used the default LnF colour rather than the Atom
+        // theme. Re-sync it now that the editor has installed AtomLookAndFeel as
+        // the global default, so the window background and the editor background
+        // match during resize (no flash of a different colour at the edges).
+        setBackgroundColour (juce::LookAndFeel::getDefaultLookAndFeel()
+                                 .findColour (juce::ResizableWindow::backgroundColourId));
+
         for (int i = getNumChildComponents(); --i >= 0;)
             if (auto* button = dynamic_cast<juce::TextButton*> (getChildComponent (i)))
                 if (button->getButtonText() == "Options")
@@ -76,9 +81,9 @@ public:
                 if (safeWindow == nullptr)
                     return;
 
+               #if JUCE_WINDOWS
                 auto& deviceManager = safeWindow->getDeviceManager();
 
-               #if JUCE_WINDOWS
                 if (deviceManager.getCurrentAudioDeviceType() == "ASIO")
                     restartCurrentAudioDevice (deviceManager);
                #endif
@@ -86,7 +91,53 @@ public:
         }
     }
 
+    void resized() override
+    {
+        // Snap before laying out content so a WM-driven stretch cannot propagate
+        // into MainContentComponent and stretch the plugin editor.
+        syncFixedWindowSize();
+        StandaloneFilterWindow::resized();
+    }
+
 private:
+    void syncFixedWindowSize()
+    {
+        if (isSyncingSize)
+            return;
+
+        auto* content = getContentComponent();
+        if (content == nullptr)
+            return;
+
+        const auto borders = getContentComponentBorder();
+        const int expectedW = content->getWidth() + borders.getLeftAndRight();
+        const int expectedH = content->getHeight() + borders.getTopAndBottom();
+
+        if (expectedW <= 0 || expectedH <= 0)
+            return;
+
+        if (auto* c = getConstrainer())
+            c->setSizeLimits (expectedW, expectedH, expectedW, expectedH);
+
+        if (getWidth() == expectedW && getHeight() == expectedH)
+        {
+            lastStableBounds = getScreenBounds();
+            return;
+        }
+
+        // WM resize can leave getBounds() at (0, 0) during resized(); use the last
+        // known good screen position instead of the current one when snapping back.
+        auto target = (lastStableBounds.isEmpty() ? getScreenBounds() : lastStableBounds)
+                          .withSize (expectedW, expectedH);
+
+        const juce::ScopedValueSetter<bool> scope (isSyncingSize, true);
+        setBounds (target);
+        lastStableBounds = getScreenBounds();
+    }
+
+    juce::Rectangle<int> lastStableBounds;
+    bool isSyncingSize = false;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NativeStandaloneFilterWindow)
 };
 
