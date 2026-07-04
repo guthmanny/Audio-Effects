@@ -91,6 +91,7 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   bodyContentHeight = bodyMargin;
 
   const juce::StringArray headerParamIds{"inputgain", "gatethreshold", "outputgain"};
+  const juce::StringArray hiddenParamIds{"dry"};  // 不可用的参数，不在 UI 中显示
 
   const auto uiFont = AtomLookAndFeel::getUIFont(AtomLookAndFeel::getSystemUIFontHeight(), juce::Font::plain);
   const float uiFontHeight = AtomLookAndFeel::getSystemUIFontHeight();
@@ -101,7 +102,7 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   {
     if (const auto* parameter = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameters[i]))
     {
-      if (headerParamIds.contains(parameter->paramID)) continue;
+      if (headerParamIds.contains(parameter->paramID) || hiddenParamIds.contains(parameter->paramID)) continue;
 
       if (processor.parameters.parameterTypes[i] != "Slider") continue;
 
@@ -109,8 +110,12 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
 
       if (auto* param = processor.parameters.valueTreeState.getParameter(parameter->paramID))
       {
-        maxValueTextWidth = juce::jmax(maxValueTextWidth, uiFont.getStringWidthFloat(param->getText(0.0f, 0)));
-        maxValueTextWidth = juce::jmax(maxValueTextWidth, uiFont.getStringWidthFloat(param->getText(1.0f, 0)));
+        // 数值文本宽度（如 "20.00"）
+        const float numW0 = uiFont.getStringWidthFloat(param->getText(0.0f, 0));
+        const float numW1 = uiFont.getStringWidthFloat(param->getText(1.0f, 0));
+        // 加上后缀宽度（如 "ms"），因为 atom::Slider 实际显示的是 getTextFromValue() = 数值 + 后缀
+        const float suffixW = uiFont.getStringWidthFloat(parameter->label);
+        maxValueTextWidth = juce::jmax(maxValueTextWidth, numW0 + suffixW, numW1 + suffixW);
       }
     }
   }
@@ -122,7 +127,7 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   {
     if (const auto* parameter = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameters[i]))
     {
-      if (headerParamIds.contains(parameter->paramID)) continue;
+      if (headerParamIds.contains(parameter->paramID) || hiddenParamIds.contains(parameter->paramID)) continue;
 
       if (processor.parameters.parameterTypes[i] == "Slider")
       {

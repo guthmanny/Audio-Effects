@@ -32,7 +32,7 @@ ChorusAudioProcessor::ChorusAudioProcessor()
       paramGateThreshold(parameters, "Gate Threshold", "dB", -80.0f, 0.0f, -40.0f),
       paramOutputGain(parameters, "Output Gain", "dB", -100.0f, 0.0f, 0.0f),
       paramRate(parameters, "Rate", "Hz", 0.01f, 20.0f, 0.5f),
-      paramDelay(parameters, "Delay", "ms", 1.0f, 100.0f, 25.0f),
+      paramPreDelay(parameters, "PreDelay", "ms", 0.0f, 50.0f, 20.0f),
       paramAmount(parameters, "Amount", "ms", 0.0f, 50.0f, 10.0f),
       paramDry(parameters, "Dry", "", 0.0f, 1.0f, 0.7f),
       paramWet(parameters, "Wet", "", 0.0f, 1.0f, 0.5f),
@@ -64,7 +64,7 @@ void ChorusAudioProcessor::syncParametersFromValueTree()
       readParameterValue(paramGateThreshold.paramID, paramGateThreshold.defaultValue));
   paramOutputGain.setCurrentAndTargetValue(readParameterValue(paramOutputGain.paramID, paramOutputGain.defaultValue));
   paramRate.setCurrentAndTargetValue(readParameterValue(paramRate.paramID, paramRate.defaultValue));
-  paramDelay.setCurrentAndTargetValue(readParameterValue(paramDelay.paramID, paramDelay.defaultValue));
+  paramPreDelay.setCurrentAndTargetValue(readParameterValue(paramPreDelay.paramID, paramPreDelay.defaultValue));
   paramAmount.setCurrentAndTargetValue(readParameterValue(paramAmount.paramID, paramAmount.defaultValue));
   paramDry.setCurrentAndTargetValue(readParameterValue(paramDry.paramID, paramDry.defaultValue));
   paramWet.setCurrentAndTargetValue(readParameterValue(paramWet.paramID, paramWet.defaultValue));
@@ -87,18 +87,21 @@ void ChorusAudioProcessor::updateEffectParameters()
   // 参数平滑由 DSP 层 delay_line 内部的 smoother 处理，
   // JUCE 侧直接读取瞬时值，不额外平滑。
   const double rate = jmax(0.01, (double)readParameterValue(paramRate.paramID, paramRate.defaultValue));
-  const double delay = (double)readParameterValue(paramDelay.paramID, paramDelay.defaultValue);
+  const double preDelay = (double)readParameterValue(paramPreDelay.paramID, paramPreDelay.defaultValue);
   const double amount = (double)readParameterValue(paramAmount.paramID, paramAmount.defaultValue);
   const double feedback = (double)readParameterValue(paramFeedback.paramID, paramFeedback.defaultValue);
   const float mix = jlimit(0.0f, 1.0f, readParameterValue(paramWet.paramID, paramWet.defaultValue));
   const bool bypass = readParameterValue(paramBypass.paramID, (float)paramBypass.defaultState) >= 0.5f;
 
+  // 验证参数是否正确读取
+  // DBG("preDelay=" + String(preDelay) + " amount=" + String(amount) + " -> center=" + String(preDelay + amount *
+  // 0.5));
+
   if (chorus != nullptr)
   {
     chorus->setRate(rate);
-    chorus->setDelay(delay);
-    chorus->setAmount(amount);
-    // Wet-only chorus: dry/wet mix is handled by DryWetF32 per channel.
+    chorus->setDelay(preDelay + amount * 0.5);
+    chorus->setAmount(amount * 0.5);
     chorus->setCoeffX(0.0);
     chorus->setCoeffMod(1.0);
     chorus->setCoeffFb(feedback);
@@ -108,7 +111,6 @@ void ChorusAudioProcessor::updateEffectParameters()
   for (auto& dryWet : dryWets)
   {
     if (dryWet == nullptr) continue;
-
     dryWet->setWet(mix);
     dryWet->setBypass(bypass);
   }
@@ -125,7 +127,7 @@ void ChorusAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   paramGateThreshold.reset(sampleRate, smoothTime);
   paramOutputGain.reset(sampleRate, smoothTime);
   paramRate.reset(sampleRate, smoothTime);
-  paramDelay.reset(sampleRate, smoothTime);
+  paramPreDelay.reset(sampleRate, smoothTime);
   paramAmount.reset(sampleRate, smoothTime);
   paramDry.reset(sampleRate, smoothTime);
   paramWet.reset(sampleRate, smoothTime);
@@ -260,7 +262,8 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
 
   if (chorus != nullptr)
   {
-    chorus->tick(1);
+    // 传递实际 frameSize 给 tick，使 delay_line 内部 smoother 正确推进
+    chorus->tick(frameSize);
 
     float* chorusData = chorusBuffer.getWritePointer(0);
     chorus->process(monoData, chorusData, frameSize);
