@@ -15,6 +15,11 @@
 #include "nudsp/amplitude/gain_f32.h"
 #include "nudsp/extensions/white_box/distortion_plus.hpp"
 #include "nudsp/extensions/white_box/ts9.hpp"
+#include "nudsp/extensions/white_box/ac_booster.hpp"
+#include "nudsp/extensions/white_box/ds1.hpp"
+#include "nudsp/extensions/white_box/rat.hpp"
+#include "nudsp/extensions/white_box/klon.hpp"
+#include "nudsp/extensions/white_box/guvnor.hpp"
 #include "nudsp/resampling/up_sampler_f32.h"
 #include "nudsp/resampling/down_sampler_f32.h"
 
@@ -76,13 +81,15 @@ public:
 
     PluginParametersManager parameters;
 
-    enum DistortionModel { kDistortionPlus = 0, kTs9 = 1 };
+    enum DistortionModel { kDistortionPlus = 0, kTs9 = 1, kAcBooster = 2, kDs1 = 3, kRat = 4, kKlon = 5, kGuvnor = 6 };
 
     PluginParameterLinSlider paramInputGain;
     PluginParameterLinSlider paramGateThreshold;
     PluginParameterLinSlider paramOutputGain;
     PluginParameterLinSlider paramDistortion;
     PluginParameterLinSlider paramTone;
+    PluginParameterLinSlider paramBass;
+    PluginParameterLinSlider paramTreble;
     PluginParameterLinSlider paramLevel;
     PluginParameterToggle paramBypass;
 
@@ -116,6 +123,11 @@ private:
 
     std::array<std::unique_ptr<nudsp::white_box::DistortionPlusF32>, maxChannels> distortionPlusChains;
     std::array<std::unique_ptr<nudsp::white_box::Ts9F32>, maxChannels> ts9Chains;
+    std::array<std::unique_ptr<nudsp::white_box::AcBoosterF32>, maxChannels> acBoosterChains;
+    std::array<std::unique_ptr<nudsp::white_box::Ds1F32>, maxChannels> ds1Chains;
+    std::array<std::unique_ptr<nudsp::white_box::RatF32>, maxChannels> ratChains;
+    std::array<std::unique_ptr<nudsp::white_box::KlonF32>, maxChannels> klonChains;
+    std::array<std::unique_ptr<nudsp::white_box::GuvnorF32>, maxChannels> guvnorChains;
     std::unique_ptr<nudsp::GainF32> outputGain;
 
     AudioSampleBuffer outputBuffer;

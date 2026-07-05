@@ -71,6 +71,8 @@ private:
 
     atom::Slider* distortionSlider = nullptr;
     atom::Slider* toneSlider = nullptr;
+    atom::Slider* bassSlider = nullptr;
+    atom::Slider* trebleSlider = nullptr;
 
     juce::OwnedArray<atom::Slider> sliders;
     juce::OwnedArray<atom::ToggleButton> toggles;

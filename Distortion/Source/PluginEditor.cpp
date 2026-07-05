@@ -71,13 +71,26 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
         juce::PopupMenu menu;
         menu.addItem (1, "Distortion+", true, processor.getDistortionModel() == DistortionAudioProcessor::kDistortionPlus);
         menu.addItem (2, "TS9", true, processor.getDistortionModel() == DistortionAudioProcessor::kTs9);
+        menu.addItem (3, "AC Booster", true, processor.getDistortionModel() == DistortionAudioProcessor::kAcBooster);
+        menu.addItem (4, "DS-1", true, processor.getDistortionModel() == DistortionAudioProcessor::kDs1);
+        menu.addItem (5, "Rat", true, processor.getDistortionModel() == DistortionAudioProcessor::kRat);
+        menu.addItem (6, "Klon", true, processor.getDistortionModel() == DistortionAudioProcessor::kKlon);
+        menu.addItem (7, "Guv'nor", true, processor.getDistortionModel() == DistortionAudioProcessor::kGuvnor);
 
         menu.showMenuAsync (juce::PopupMenu::Options(),
                             [this] (int result)
                             {
                                 if (result == 0) return;
-                                const auto model = (result == 1) ? DistortionAudioProcessor::kDistortionPlus
-                                                                  : DistortionAudioProcessor::kTs9;
+                                DistortionAudioProcessor::DistortionModel model;
+                                switch (result) {
+                                    case 2: model = DistortionAudioProcessor::kTs9; break;
+                                    case 3: model = DistortionAudioProcessor::kAcBooster; break;
+                                    case 4: model = DistortionAudioProcessor::kDs1; break;
+                                    case 5: model = DistortionAudioProcessor::kRat; break;
+                                    case 6: model = DistortionAudioProcessor::kKlon; break;
+                                    case 7: model = DistortionAudioProcessor::kGuvnor; break;
+                                    default: model = DistortionAudioProcessor::kDistortionPlus; break;
+                                }
                                 processor.setDistortionModel (model);
                                 updateModelUI();
                             });
@@ -160,6 +173,10 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
                     distortionSlider = aSlider;
                 else if (parameter->paramID == "tone")
                     toneSlider = aSlider;
+                else if (parameter->paramID == "bass")
+                    bassSlider = aSlider;
+                else if (parameter->paramID == "treble")
+                    trebleSlider = aSlider;
 
                 aSlider->setTextValueSuffix (parameter->label);
                 aSlider->setValueLabelPos (atom::Slider::ValueLabelPos::Right);
@@ -437,21 +454,61 @@ void DistortionAudioProcessorEditor::showStandaloneOptionsMenu()
 
 void DistortionAudioProcessorEditor::updateModelUI()
 {
-    const bool isTs9 = (processor.getDistortionModel() == DistortionAudioProcessor::kTs9);
+    const auto m = processor.getDistortionModel();
+
+    juce::String label = "Distortion";
+    juce::String toneLabel = "Tone";
+    if (m == DistortionAudioProcessor::kTs9) label = "Drive";
+    else if (m == DistortionAudioProcessor::kAcBooster) label = "Gain";
+    else if (m == DistortionAudioProcessor::kDs1) label = "Gain";
+    else if (m == DistortionAudioProcessor::kRat) { label = "Distortion"; toneLabel = "Filter"; }
+    else if (m == DistortionAudioProcessor::kKlon) { label = "Gain"; toneLabel = "Treble"; }
+    else if (m == DistortionAudioProcessor::kGuvnor) { label = "Gain"; toneLabel = "Treble"; }
 
     if (distortionSlider != nullptr)
     {
         atom::SliderStyleOverride styleOverride;
-        styleOverride.colors.labelText = isTs9 ? "Drive" : "Distortion";
+        styleOverride.colors.labelText = label;
         styleOverride.metrics.linearHorizontalLabelReserveDlu = savedLabelReserveDlu;
         styleOverride.metrics.linearHorizontalValueLabelReserveDlu = savedValueReserveDlu;
         atomLookAndFeel.setSliderStyleOverride (*distortionSlider, styleOverride);
         distortionSlider->repaint();
     }
 
+    const bool showTone = (m == DistortionAudioProcessor::kTs9 || m == DistortionAudioProcessor::kDs1 || m == DistortionAudioProcessor::kRat || m == DistortionAudioProcessor::kKlon || m == DistortionAudioProcessor::kGuvnor);
+    const bool showBass = (m == DistortionAudioProcessor::kAcBooster || m == DistortionAudioProcessor::kGuvnor);
+    const bool showTreble = (m == DistortionAudioProcessor::kAcBooster || m == DistortionAudioProcessor::kGuvnor);
+
     if (toneSlider != nullptr)
     {
-        toneSlider->setVisible (isTs9);
+        toneSlider->setVisible (showTone);
+        atom::SliderStyleOverride ts;
+        ts.colors.labelText = toneLabel;
+        ts.metrics.linearHorizontalLabelReserveDlu = savedLabelReserveDlu;
+        ts.metrics.linearHorizontalValueLabelReserveDlu = savedValueReserveDlu;
+        atomLookAndFeel.setSliderStyleOverride (*toneSlider, ts);
+        toneSlider->repaint();
+    }
+    if (bassSlider != nullptr)
+    {
+        bassSlider->setVisible (showBass);
+        atom::SliderStyleOverride bs;
+        bs.colors.labelText = "Bass";
+        bs.metrics.linearHorizontalLabelReserveDlu = savedLabelReserveDlu;
+        bs.metrics.linearHorizontalValueLabelReserveDlu = savedValueReserveDlu;
+        atomLookAndFeel.setSliderStyleOverride (*bassSlider, bs);
+        bassSlider->repaint();
+    }
+    if (trebleSlider != nullptr)
+    {
+        trebleSlider->setVisible (showTreble);
+        const juce::String trebleLabel = (m == DistortionAudioProcessor::kGuvnor) ? "Mid" : "Treble";
+        atom::SliderStyleOverride ts2;
+        ts2.colors.labelText = trebleLabel;
+        ts2.metrics.linearHorizontalLabelReserveDlu = savedLabelReserveDlu;
+        ts2.metrics.linearHorizontalValueLabelReserveDlu = savedValueReserveDlu;
+        atomLookAndFeel.setSliderStyleOverride (*trebleSlider, ts2);
+        trebleSlider->repaint();
     }
 
     bodyContentHeight = bodyMargin;

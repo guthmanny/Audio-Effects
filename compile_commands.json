@@ -934,5 +934,53 @@
   "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/ds1/ds1.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/ds1/ds1.c",
   "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/ds1/ds1.c",
   "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/ds1/ds1.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/ac_booster/ac_booster_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/ac_booster/ac_booster_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/ac_booster/ac_booster_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/ac_booster/ac_booster_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/ac_booster/ac_booster.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/ac_booster/ac_booster.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/ac_booster/ac_booster.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/ac_booster/ac_booster.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/rat/rat_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/rat/rat_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/rat/rat_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/rat/rat_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/rat/rat.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/rat/rat.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/rat/rat.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/rat/rat.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/klon/klon_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/klon/klon_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/klon/klon_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/klon/klon_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/klon/klon.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/klon/klon.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/klon/klon.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/klon/klon.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/guvnor/guvnor_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/guvnor/guvnor_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/guvnor/guvnor_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/guvnor/guvnor_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/guvnor/guvnor.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/guvnor/guvnor.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/white_box/guvnor/guvnor.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/white_box/guvnor/guvnor.c.o"
 }
 ]

@@ -31,6 +31,8 @@ DistortionAudioProcessor::DistortionAudioProcessor():
     , paramOutputGain (parameters, "Output Gain", "dB", -100.0f, 0.0f, 0.0f)
     , paramDistortion (parameters, "Distortion", "", 0.0f, 1.0f, 0.5f)
     , paramTone (parameters, "Tone", "", 0.0f, 1.0f, 0.5f)
+    , paramBass (parameters, "Bass", "", 0.0f, 1.0f, 0.5f)
+    , paramTreble (parameters, "Treble", "", 0.0f, 1.0f, 0.5f)
     , paramLevel (parameters, "Level", "%", 0.0f, 100.0f, 100.0f)
     , paramBypass (parameters, "Bypass", false)
 {
@@ -67,6 +69,8 @@ void DistortionAudioProcessor::syncParametersFromValueTree()
     paramOutputGain.setCurrentAndTargetValue (readParameterValue (paramOutputGain.paramID, paramOutputGain.defaultValue));
     paramDistortion.setCurrentAndTargetValue (readParameterValue (paramDistortion.paramID, paramDistortion.defaultValue));
     paramTone.setCurrentAndTargetValue (readParameterValue (paramTone.paramID, paramTone.defaultValue));
+    paramBass.setCurrentAndTargetValue (readParameterValue (paramBass.paramID, paramBass.defaultValue));
+    paramTreble.setCurrentAndTargetValue (readParameterValue (paramTreble.paramID, paramTreble.defaultValue));
     paramLevel.setCurrentAndTargetValue (readParameterValue (paramLevel.paramID, paramLevel.defaultValue));
     paramBypass.setCurrentAndTargetValue (readParameterValue (paramBypass.paramID, (float) paramBypass.defaultState));
 }
@@ -100,6 +104,11 @@ void DistortionAudioProcessor::ensureEffectInstances()
         dist = std::move (d);
     }
     for (auto& ts : ts9Chains) if (!ts) ts = std::make_unique<nudsp::white_box::Ts9F32>();
+    for (auto& ac : acBoosterChains) if (!ac) ac = std::make_unique<nudsp::white_box::AcBoosterF32>();
+    for (auto& ds : ds1Chains) if (!ds) ds = std::make_unique<nudsp::white_box::Ds1F32>();
+    for (auto& rt : ratChains) if (!rt) rt = std::make_unique<nudsp::white_box::RatF32>();
+    for (auto& kl : klonChains) if (!kl) kl = std::make_unique<nudsp::white_box::KlonF32>();
+    for (auto& gv : guvnorChains) if (!gv) gv = std::make_unique<nudsp::white_box::GuvnorF32>();
     if (!outputGain) outputGain = std::make_unique<nudsp::GainF32>();
 }
 
@@ -107,11 +116,18 @@ void DistortionAudioProcessor::updateEffectParameters()
 {
     const double distortion = jlimit (0.0, 1.0, (double) readParameterValue (paramDistortion.paramID, paramDistortion.defaultValue));
     const double tone = jlimit (0.0, 1.0, (double) readParameterValue (paramTone.paramID, paramTone.defaultValue));
+    const double bass = jlimit (0.0, 1.0, (double) readParameterValue (paramBass.paramID, paramBass.defaultValue));
+    const double treble = jlimit (0.0, 1.0, (double) readParameterValue (paramTreble.paramID, paramTreble.defaultValue));
     const bool bypass = readParameterValue (paramBypass.paramID, (float) paramBypass.defaultState) >= 0.5f;
     const double level = jlimit (0.0, 1.0, (double) readParameterValue (paramLevel.paramID, paramLevel.defaultValue) / 100.0);
 
     for (auto& dist : distortionPlusChains) if (dist) { dist->setOpampDistortionControl (distortion); dist->setLevelControl (level); dist->setBypass (bypass); }
     for (auto& ts : ts9Chains) if (ts) { ts->setDriveControl (distortion); ts->setToneControl (tone); ts->setLevelControl (level); ts->setBypass (bypass); }
+    for (auto& ac : acBoosterChains) if (ac) { ac->setGainControl (distortion); ac->setBassControl (bass); ac->setTrebleControl (treble); ac->setLevelControl (level); ac->setBypass (bypass); }
+    for (auto& ds : ds1Chains) if (ds) { ds->setGainControl (distortion); ds->setToneControl (tone); ds->setLevelControl (level); ds->setBypass (bypass); }
+    for (auto& rt : ratChains) if (rt) { rt->setDistortionControl (distortion); rt->setFilterControl (tone); rt->setLevelControl (level); rt->setBypass (bypass); }
+    for (auto& kl : klonChains) if (kl) { kl->setGainControl (distortion); kl->setTrebleControl (tone); kl->setLevelControl (level); kl->setBypass (bypass); }
+    for (auto& gv : guvnorChains) if (gv) { gv->setGainControl (distortion); gv->setTrebleControl (tone); gv->setBassControl (bass); gv->setMidControl (treble); gv->setLevelControl (level); gv->setBypass (bypass); }
 }
 
 static void setupOversamplers (nx_upsampler_t* ups[], nx_downsampler_t* downs[], int maxChannels, int factor)
@@ -145,6 +161,8 @@ void DistortionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     paramOutputGain.reset (sampleRate, smoothTime);
     paramDistortion.reset (sampleRate, smoothTime);
     paramTone.reset (sampleRate, smoothTime);
+    paramBass.reset (sampleRate, smoothTime);
+    paramTreble.reset (sampleRate, smoothTime);
     paramLevel.reset (sampleRate, smoothTime);
     paramBypass.reset (sampleRate, smoothTime);
 
@@ -153,6 +171,11 @@ void DistortionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 
     for (auto& dist : distortionPlusChains) { dist->prepare (sampleRate * osFactor); dist->reset(); dist->tick (1); }
     for (auto& ts : ts9Chains) { ts->prepare (sampleRate * osFactor); ts->reset(); ts->tick (1); }
+    for (auto& ac : acBoosterChains) { ac->prepare (sampleRate * osFactor); ac->reset(); ac->tick (1); }
+    for (auto& ds : ds1Chains) { ds->prepare (sampleRate * osFactor); ds->reset(); ds->tick (1); }
+    for (auto& rt : ratChains) { rt->prepare (sampleRate * osFactor); rt->reset(); rt->tick (1); }
+    for (auto& kl : klonChains) { kl->prepare (sampleRate * osFactor); kl->reset(); kl->tick (1); }
+    for (auto& gv : guvnorChains) { gv->prepare (sampleRate * osFactor); gv->reset(); gv->tick (1); }
 
     if (outputGain)
     {
@@ -170,6 +193,11 @@ void DistortionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     updateEffectParameters();
     for (auto& dist : distortionPlusChains) dist->tick (1);
     for (auto& ts : ts9Chains) ts->tick (1);
+    for (auto& ac : acBoosterChains) ac->tick (1);
+    for (auto& ds : ds1Chains) ds->tick (1);
+    for (auto& rt : ratChains) rt->tick (1);
+    for (auto& kl : klonChains) kl->tick (1);
+    for (auto& gv : guvnorChains) gv->tick (1);
 }
 
 void DistortionAudioProcessor::releaseResources()
@@ -252,6 +280,11 @@ void DistortionAudioProcessor::processBlock (AudioSampleBuffer& buffer, MidiBuff
 
     const auto model = currentModel.load();
     const bool useTs9 = (model == kTs9);
+    const bool useAc = (model == kAcBooster);
+    const bool useDs1 = (model == kDs1);
+    const bool useRat = (model == kRat);
+    const bool useKlon = (model == kKlon);
+    const bool useGuvnor = (model == kGuvnor);
     const int osFactor = oversampleFactor.load();
     const size_t fs = (size_t) numSamp;
     const size_t osFs = fs * (size_t) osFactor;
@@ -283,6 +316,36 @@ void DistortionAudioProcessor::processBlock (AudioSampleBuffer& buffer, MidiBuff
         {
             auto& ts = ts9Chains[(size_t) ch];
             if (ts) { ts->tick (osFs); ts->process (osBuf, osBuf, osFs); }
+            else FloatVectorOperations::copy (effectOut, osBuf, (int) osFs);
+        }
+        else if (useAc)
+        {
+            auto& ac = acBoosterChains[(size_t) ch];
+            if (ac) { ac->tick (osFs); ac->process (osBuf, osBuf, osFs); }
+            else FloatVectorOperations::copy (effectOut, osBuf, (int) osFs);
+        }
+        else if (useDs1)
+        {
+            auto& ds = ds1Chains[(size_t) ch];
+            if (ds) { ds->tick (osFs); ds->process (osBuf, osBuf, osFs); }
+            else FloatVectorOperations::copy (effectOut, osBuf, (int) osFs);
+        }
+        else if (useRat)
+        {
+            auto& rt = ratChains[(size_t) ch];
+            if (rt) { rt->tick (osFs); rt->process (osBuf, osBuf, osFs); }
+            else FloatVectorOperations::copy (effectOut, osBuf, (int) osFs);
+        }
+        else if (useKlon)
+        {
+            auto& kl = klonChains[(size_t) ch];
+            if (kl) { kl->tick (osFs); kl->process (osBuf, osBuf, osFs); }
+            else FloatVectorOperations::copy (effectOut, osBuf, (int) osFs);
+        }
+        else if (useGuvnor)
+        {
+            auto& gv = guvnorChains[(size_t) ch];
+            if (gv) { gv->tick (osFs); gv->process (osBuf, osBuf, osFs); }
             else FloatVectorOperations::copy (effectOut, osBuf, (int) osFs);
         }
         else
