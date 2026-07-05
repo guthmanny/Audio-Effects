@@ -15,6 +15,7 @@ public:
     atom::ComboBox& getViewComboBox() { return viewComboBox; }
 
     std::function<void (float)> onZoomChanged;
+    int getMinimumContentWidth (int heightHint = 0);
 
     void lookAndFeelChanged() override;
     void paint (juce::Graphics& g) override;

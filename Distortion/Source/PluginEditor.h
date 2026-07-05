@@ -34,6 +34,8 @@ public:
     void showAudioSettingsDialog();
 #endif
 
+    void updateModelUI();
+
 private:
     void timerCallback() override;
 #if JucePlugin_Build_Standalone
@@ -58,12 +60,17 @@ private:
 
     float zoomFactor = 1.0f;
     int bodyContentHeight = 0;
+    float savedLabelReserveDlu = 0.0f;
+    float savedValueReserveDlu = 0.0f;
 
     AtomLookAndFeel atomLookAndFeel { atom::ThemeType::Dark };
     DistortionHeaderComponent headerBar;
     DistortionFooterComponent footerBar;
     DistortionBodyContent bodyContent;
     juce::Viewport bodyViewport;
+
+    atom::Slider* distortionSlider = nullptr;
+    atom::Slider* toneSlider = nullptr;
 
     juce::OwnedArray<atom::Slider> sliders;
     juce::OwnedArray<atom::ToggleButton> toggles;

@@ -12,29 +12,11 @@ namespace
 {
 void ensureEffectInputUnmuted (juce::StandalonePluginHolder& holder)
 {
+    // Distortion is an effect — it needs input audio. Always unmute, overriding
+    // JUCE's feedback-loop default and any persisted "shouldMuteInput=true".
+    holder.getMuteInputValue().setValue (false);
     if (auto* props = holder.settings.get())
-    {
-        if (! props->containsKey ("shouldMuteInput"))
-            holder.getMuteInputValue().setValue (false);
-    }
-    else
-    {
-        holder.getMuteInputValue().setValue (false);
-    }
-}
-
-void restartCurrentAudioDevice (juce::AudioDeviceManager& deviceManager)
-{
-    if (deviceManager.getCurrentAudioDevice() == nullptr)
-        return;
-
-    juce::AudioDeviceManager::AudioDeviceSetup setup;
-    deviceManager.getAudioDeviceSetup (setup);
-
-    if (setup.inputDeviceName.isEmpty() && setup.outputDeviceName.isEmpty())
-        return;
-
-    deviceManager.setAudioDeviceSetup (setup, false);
+        props->setValue ("shouldMuteInput", false);
 }
 
 class NativeStandaloneFilterWindow : public juce::StandaloneFilterWindow
@@ -66,23 +48,7 @@ public:
                     button->setVisible (false);
 
         if (auto* holder = juce::StandalonePluginHolder::getInstance())
-        {
             ensureEffectInputUnmuted (*holder);
-
-            juce::Component::SafePointer<NativeStandaloneFilterWindow> safeWindow (this);
-            juce::Timer::callAfterDelay (300, [safeWindow]()
-            {
-                if (safeWindow == nullptr)
-                    return;
-
-                auto& deviceManager = safeWindow->getDeviceManager();
-
-               #if JUCE_WINDOWS
-                if (deviceManager.getCurrentAudioDeviceType() == "ASIO")
-                    restartCurrentAudioDevice (deviceManager);
-               #endif
-            });
-        }
     }
 
 private:

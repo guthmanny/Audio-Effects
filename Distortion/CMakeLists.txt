@@ -98,6 +98,10 @@ set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_SOURCE_DIR}/../third_party/NuDSP"
                "${CMAKE_BINARY_DIR}/NuDSP")
 
+# NuDSP 作为静态库被链接到 PIE 可执行文件和 VST3 共享库，
+# 必须启用位置无关代码（-fPIC）。
+set_property(TARGET nudsp PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 if(WIN32)
     set(DISTORTION_VST3_COPY_DIR "$ENV{LOCALAPPDATA}/Programs/Common/VST3")
 elseif(APPLE)
@@ -147,10 +151,9 @@ target_compile_definitions(Distortion
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
-)
-
-target_compile_definitions(Distortion_Standalone PRIVATE
-    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
+        JUCE_JACK=1
+    PRIVATE
+        JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
 )
 
 if(WIN32)

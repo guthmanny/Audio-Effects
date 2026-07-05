@@ -66,6 +66,33 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
     bodyViewport.setScrollBarsShown (true, false);
     bodyViewport.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, juce::Colours::grey);
 
+    footerBar.getBtnMidiPort().onClick = [this]
+    {
+        juce::PopupMenu menu;
+        menu.addItem (1, "Distortion+", true, processor.getDistortionModel() == DistortionAudioProcessor::kDistortionPlus);
+        menu.addItem (2, "TS9", true, processor.getDistortionModel() == DistortionAudioProcessor::kTs9);
+
+        menu.showMenuAsync (juce::PopupMenu::Options(),
+                            [this] (int result)
+                            {
+                                if (result == 0) return;
+                                const auto model = (result == 1) ? DistortionAudioProcessor::kDistortionPlus
+                                                                  : DistortionAudioProcessor::kTs9;
+                                processor.setDistortionModel (model);
+                                updateModelUI();
+                            });
+    };
+
+    footerBar.getQualityComboBox().onChange = [this]
+    {
+        switch (footerBar.getQualityComboBox().getSelectedId())
+        {
+            case 1:  processor.setOversampleFactor (4); break;
+            case 2:  processor.setOversampleFactor (8); break;
+            default: break;
+        }
+    };
+
     headerBar.getBtnSettings().onClick = [this]
     {
 #if JucePlugin_Build_Standalone
@@ -115,6 +142,8 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
 
     const float labelReserveDlu = maxParamLabelWidth > 0.0f ? maxParamLabelWidth * 8.0f / uiFontHeight : 0.0f;
     const float valueReserveDlu = maxValueTextWidth > 0.0f ? (maxValueTextWidth + 12.0f) * 8.0f / uiFontHeight : 0.0f;
+    savedLabelReserveDlu = labelReserveDlu;
+    savedValueReserveDlu = valueReserveDlu;
 
     for (int i = 0; i < parameters.size(); ++i)
     {
@@ -126,6 +155,12 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
             if (processor.parameters.parameterTypes[i] == "Slider")
             {
                 auto* aSlider = sliders.add (new atom::Slider());
+
+                if (parameter->paramID == "distortion")
+                    distortionSlider = aSlider;
+                else if (parameter->paramID == "tone")
+                    toneSlider = aSlider;
+
                 aSlider->setTextValueSuffix (parameter->label);
                 aSlider->setValueLabelPos (atom::Slider::ValueLabelPos::Right);
 
@@ -181,6 +216,7 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
     bodyContentHeight += bodyMargin;
 
     applyZoom (1.0f);
+    updateModelUI();
     startTimerHz (30);
 
 #if JucePlugin_Build_Standalone
@@ -219,7 +255,9 @@ int DistortionAudioProcessorEditor::getBodyContentHeight() const noexcept
 
 int DistortionAudioProcessorEditor::getEditorWidth()
 {
-    return headerBar.getMinimumContentWidth (getHeaderHeight());
+    const int headerW = headerBar.getMinimumContentWidth (getHeaderHeight());
+    const int footerW = footerBar.getMinimumContentWidth (getFooterHeight());
+    return juce::jmax (headerW, footerW);
 }
 
 int DistortionAudioProcessorEditor::getNaturalHeight() const noexcept
@@ -246,6 +284,7 @@ void DistortionAudioProcessorEditor::timerCallback()
     headerBar.setMeterLevels (processor.getMeterLevelMono(),
                               processor.getMeterLevelLeft(),
                               processor.getMeterLevelRight());
+    headerBar.setCpuLoad (processor.getCpuLoad());
 }
 
 void DistortionAudioProcessorEditor::paint (juce::Graphics& g)
@@ -269,6 +308,8 @@ void DistortionAudioProcessorEditor::resized()
     auto area = bodyContent.getLocalBounds().reduced (juce::roundToInt ((float) bodyMargin * zoomFactor), 0);
     for (auto* component : bodyComponents)
     {
+        if (! component->isVisible())
+            continue;
         const int rowHeight = dynamic_cast<atom::Slider*> (component) != nullptr
                                   ? juce::roundToInt ((float) sliderHeight * zoomFactor)
                                   : juce::roundToInt ((float) cardRowHeight * zoomFactor);
@@ -305,7 +346,21 @@ void DistortionAudioProcessorEditor::showAudioSettingsDialog()
         return;
 
     auto* panel = new AudioSettingsPanel (window->getDeviceManager(), atomLookAndFeel);
+
+    // 初始大小使用固定值，与反向约束的最小值解耦
     panel->setSize (560, 420);
+
+    // 计算反向约束的最小值，用于限制对话框缩小
+    const int minPanelW = panel->getMinimumPanelWidth();
+    const int minPanelH = panel->getMinimumPanelHeight();
+    // 最小值上限 520px，避免因设备名过长导致对话框无法缩小到合理尺寸
+    constexpr int kMaxMinW = 520;
+    constexpr int kMaxMinH = 600;
+    const int clampedMinW = juce::jmin (minPanelW, kMaxMinW);
+    const int clampedMinH = juce::jmin (minPanelH, kMaxMinH);
+    // 对话框最小尺寸（内容 + 窗口装饰预留）
+    const int minDialogW = juce::jmax (400, clampedMinW + 20);
+    const int minDialogH = juce::jmax (300, clampedMinH + 40);
 
     juce::DialogWindow::LaunchOptions options;
     options.dialogTitle = "Audio Settings";
@@ -322,6 +377,7 @@ void DistortionAudioProcessorEditor::showAudioSettingsDialog()
 
     if (dialog != nullptr)
     {
+        dialog->setResizeLimits (minDialogW, minDialogH, 1600, 1200);
         dialog->setAlwaysOnTop (true);
         applyAudioSettingsDialogTitleBarTheme();
 
@@ -376,3 +432,37 @@ void DistortionAudioProcessorEditor::showStandaloneOptionsMenu()
                         });
 }
 #endif
+
+//==============================================================================
+
+void DistortionAudioProcessorEditor::updateModelUI()
+{
+    const bool isTs9 = (processor.getDistortionModel() == DistortionAudioProcessor::kTs9);
+
+    if (distortionSlider != nullptr)
+    {
+        atom::SliderStyleOverride styleOverride;
+        styleOverride.colors.labelText = isTs9 ? "Drive" : "Distortion";
+        styleOverride.metrics.linearHorizontalLabelReserveDlu = savedLabelReserveDlu;
+        styleOverride.metrics.linearHorizontalValueLabelReserveDlu = savedValueReserveDlu;
+        atomLookAndFeel.setSliderStyleOverride (*distortionSlider, styleOverride);
+        distortionSlider->repaint();
+    }
+
+    if (toneSlider != nullptr)
+    {
+        toneSlider->setVisible (isTs9);
+    }
+
+    bodyContentHeight = bodyMargin;
+    for (auto* component : bodyComponents)
+    {
+        if (! component->isVisible())
+            continue;
+        const int rowHeight = dynamic_cast<atom::Slider*> (component) != nullptr ? sliderHeight : cardRowHeight;
+        bodyContentHeight += rowHeight + bodyPadding;
+    }
+    bodyContentHeight += bodyMargin;
+
+    applyZoom (zoomFactor);
+}

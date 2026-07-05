@@ -25,6 +25,9 @@ DistortionHeaderComponent::DistortionHeaderComponent()
     addAndMakeVisible (meterLeft);
     addAndMakeVisible (meterRight);
 
+    setupCpuMeter();
+    addAndMakeVisible (cpuMeter);
+
     setupRotarySlider (sliderInput, "INPUT", -12.0, 12.0, 0.0);
     setupRotarySlider (sliderGate, "GATE", -80.0, 0.0, -40.0);
     setupRotarySlider (sliderOutput, "OUTPUT", -100.0, 0.0, 0.0);
@@ -41,6 +44,34 @@ DistortionHeaderComponent::DistortionHeaderComponent()
 DistortionHeaderComponent::~DistortionHeaderComponent()
 {
     stopTimer();
+}
+
+void DistortionHeaderComponent::setupCpuMeter()
+{
+    cpuMeter.setBarCount (1);
+    cpuMeter.setOrientation (atom::MeterBar::Orientation::Vertical);
+    cpuMeter.setPeakHoldEnabled (true);
+    cpuMeter.setSegmentCount (0);
+    cpuMeter.setRefreshRateHz (60);
+    cpuMeter.setPeakHoldTimeMs (0);
+    cpuMeter.setPeakReleaseRate (0.015f);
+
+    atom::MeterBarStyleOverride style;
+    style.colors.barNormal   = juce::Colour (0xff22cc55);
+    style.colors.barWarning  = juce::Colour (0xffcccc00);
+    style.colors.barClip     = juce::Colour (0xffcc3300);
+    style.colors.peak        = juce::Colour (0xffffffff);
+    style.colors.background  = juce::Colour (0x33000000);
+    style.metrics.warningThreshold = 0.70f;
+    style.metrics.clipThreshold    = 0.92f;
+    style.metrics.peakThickness = 0.0f;
+    style.metrics.roundness = 0.0f;
+    style.metrics.outerPadding = 2.0f;
+    style.metrics.barGap = 0.0f;
+    style.metrics.segmentGap = 0.0f;
+    style.metrics.clipZoneThreshold = 0.95f;
+    style.metrics.clipHoldTimeSec = 1.0f;
+    cpuMeter.setStyleOverride (style);
 }
 
 void DistortionHeaderComponent::setupMeter (atom::MeterBar& meter, int barCount)
@@ -72,10 +103,16 @@ void DistortionHeaderComponent::setMeterLevels (float left, float rightL, float 
     meterRightRLevel = rightR;
 }
 
+void DistortionHeaderComponent::setCpuLoad (float load)
+{
+    cpuLoadLevel = load;
+}
+
 void DistortionHeaderComponent::timerCallback()
 {
     meterLeft.setLevels ({ meterLeftLevel });
     meterRight.setLevels ({ meterRightLLevel, meterRightRLevel });
+    cpuMeter.setLevels ({ cpuLoadLevel });
 }
 
 void DistortionHeaderComponent::lookAndFeelChanged()
@@ -115,6 +152,7 @@ void DistortionHeaderComponent::resized()
     const int meterH = (int) (h * 0.85f);
     const int meterW = 14;
     const int cogSize = juce::jmin (knobSize, 28);
+    const int cpuMeterW = 8;
 
     FlexBox flexBox;
     flexBox.flexDirection = FlexBox::Direction::row;
@@ -138,6 +176,7 @@ void DistortionHeaderComponent::resized()
         makeItem ((float) gateW, (float) gateH, sliderGate, 6, 6),
         makeItem ((float) cogSize, (float) cogSize, btnSettings, 6, 6),
         spacer,
+        makeItem ((float) cpuMeterW, (float) meterH, cpuMeter, 6, 6),
         makeItem ((float) outW, (float) outH, sliderOutput, 6, 6),
         makeItem ((float) meterW * 2.0f, (float) meterH, meterRight, 10, 6),
     });
@@ -152,11 +191,11 @@ int DistortionHeaderComponent::getMinimumContentWidth (int heightHint)
     const int margin = h / 6;
     const int meterW = 14;
     const int cogSize = juce::jmin (knobSize, 28);
+    const int cpuMeterW = 8;
 
     const int inW = sliderInput.getRequiredWidth (knobSize);
     const int gateW = sliderGate.getRequiredWidth (knobSize);
     const int outW = sliderOutput.getRequiredWidth (knobSize);
-
-    const int content = meterW + 16 + inW + 12 + gateW + 12 + cogSize + 12 + outW + 12 + meterW * 2 + 16;
+    const int content = meterW + 16 + inW + 12 + gateW + 12 + cogSize + 12 + cpuMeterW + 12 + outW + 12 + meterW * 2 + 16;
     return content + margin * 2;
 }

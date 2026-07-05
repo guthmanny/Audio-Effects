@@ -83,7 +83,8 @@ protected:
                            const float maxValue,
                            const float defaultValue,
                            const std::function<float (float)> callback,
-                           const bool logarithmic)
+                           const bool logarithmic,
+                           const double skew = 1.0)
         : PluginParameter (parametersManager, callback)
         , paramName (paramName)
         , labelText (labelText)
@@ -97,6 +98,8 @@ protected:
         NormalisableRange<float> range (minValue, maxValue);
         if (logarithmic)
             range.setSkewForCentre (sqrt (minValue * maxValue));
+        else if (skew != 1.0)
+            range.skew = skew;
 
         parametersManager.valueTreeState.createAndAddParameter
             (paramID, paramName, labelText, range, defaultValue,
@@ -126,7 +129,8 @@ public:
                               const float minValue,
                               const float maxValue,
                               const float defaultValue,
-                              const std::function<float (float)> callback = nullptr)
+                              const std::function<float (float)> callback = nullptr,
+                              const double skew = 1.0)
         : PluginParameterSlider (parametersManager,
                                  paramName,
                                  labelText,
@@ -134,7 +138,8 @@ public:
                                  maxValue,
                                  defaultValue,
                                  callback,
-                                 false)
+                                 false,
+                                 skew)
     {
     }
 };

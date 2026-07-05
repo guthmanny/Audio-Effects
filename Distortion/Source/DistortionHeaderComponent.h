@@ -15,8 +15,10 @@ public:
     atom::ShapeButton& getBtnSettings() { return btnSettings; }
     atom::MeterBar& getMeterLeft() { return meterLeft; }
     atom::MeterBar& getMeterRight() { return meterRight; }
+    atom::MeterBar& getCpuMeter() { return cpuMeter; }
 
     void setMeterLevels (float left, float rightL, float rightR);
+    void setCpuLoad (float load);
 
     void lookAndFeelChanged() override;
     void paint (juce::Graphics& g) override;
@@ -27,9 +29,11 @@ public:
 private:
     void timerCallback() override;
     void setupMeter (atom::MeterBar& meter, int barCount);
+    void setupCpuMeter();
 
     atom::MeterBar meterLeft;
     atom::MeterBar meterRight;
+    atom::MeterBar cpuMeter;
     atom::ShapeButton btnSettings { "btnSettings", AtomIconLibrary::Icon::CogWheel };
     atom::Slider sliderInput { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     atom::Slider sliderGate { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
@@ -38,4 +42,5 @@ private:
     float meterLeftLevel = 0.0f;
     float meterRightLLevel = 0.0f;
     float meterRightRLevel = 0.0f;
+    float cpuLoadLevel = 0.0f;
 };

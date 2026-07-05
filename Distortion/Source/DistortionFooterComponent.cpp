@@ -72,11 +72,9 @@ void DistortionFooterComponent::resized()
     const auto area = getLocalBounds().reduced (16, 0);
     const int h = juce::jmin (area.getHeight() - 2, 64);
     const int y = area.getY() + (area.getHeight() - h) / 2;
-
     const int btnSize = h;
-    int xPos = area.getX();
-    btnMidiPort.setBounds (xPos, y, btnSize, btnSize);
-    xPos += btnSize;
+
+    btnMidiPort.setBounds (area.getX(), y, btnSize, btnSize);
 
     qualityComboBox.setSize (qualityComboBox.getIdealWidth(), h);
     viewComboBox.setSize (viewComboBox.getIdealWidth(), h);
@@ -106,14 +104,28 @@ void DistortionFooterComponent::resized()
         return item;
     };
 
-    FlexItem spacer (10.0f, 0.0f);
+    FlexItem fixedSpacer (24.0f, 0.0f);
+    FlexItem interSpacer (10.0f, 0.0f);
     rightBox.items.addArray ({
+        fixedSpacer,
         labelItem (qualityLabel, qualityTextW, h),
         comboItem (qualityComboBox, h),
-        spacer,
+        interSpacer,
         labelItem (viewLabel, viewTextW, h),
         comboItem (viewComboBox, h),
     });
 
-    rightBox.performLayout (area.withLeft (xPos + 8));
+    rightBox.performLayout (area.withLeft (area.getX() + btnSize));
+}
+
+int DistortionFooterComponent::getMinimumContentWidth (int heightHint)
+{
+    const int h = heightHint > 0 ? heightHint : (getHeight() > 0 ? getHeight() : 32);
+    const int btnSize = juce::jmin (h, 64);
+    const auto font = AtomLookAndFeel::getUIFont (AtomLookAndFeel::getSystemUIFontHeight(), juce::Font::plain);
+    const int qualityTextW = juce::roundToInt (font.getStringWidthFloat ("QUALITY:")) + 6;
+    const int viewTextW = juce::roundToInt (font.getStringWidthFloat ("VIEW:")) + 6;
+    const int comboW = 100;  // approximate ideal combo width
+    const int margin = 16;
+    return margin * 2 + btnSize + 24 + qualityTextW + comboW + 10 + viewTextW + comboW;
 }
