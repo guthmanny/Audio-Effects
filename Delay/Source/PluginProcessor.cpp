@@ -1,266 +1,405 @@
 /*
   ==============================================================================
 
-    This code is based on the contents of the book: "Audio Effects: Theory,
-    Implementation and Application" by Joshua D. Reiss and Andrew P. McPherson.
-
-    Code by Juan Gil <http://juangil.com/>.
-    Copyright (C) 2017 Juan Gil.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+    Delay / Analog Delay plugin — DSP via NuDSP camel.
 
   ==============================================================================
 */
 
 #include "PluginProcessor.h"
+
+#include <cmath>
+
 #include "PluginEditor.h"
 #include "PluginParameter.h"
 
 //==============================================================================
 
-DelayAudioProcessor::DelayAudioProcessor():
+DelayAudioProcessor::DelayAudioProcessor()
+    :
 #ifndef JucePlugin_PreferredChannelConfigurations
-    AudioProcessor (BusesProperties()
-                    #if ! JucePlugin_IsMidiEffect
-                     #if ! JucePlugin_IsSynth
-                      .withInput  ("Input",  AudioChannelSet::stereo(), true)
-                     #endif
-                      .withOutput ("Output", AudioChannelSet::stereo(), true)
-                    #endif
-                   ),
+      AudioProcessor(BusesProperties()
+#if !JucePlugin_IsMidiEffect
+#if !JucePlugin_IsSynth
+                         .withInput("Input", AudioChannelSet::stereo(), true)
 #endif
-    parameters (*this)
-    , paramDelayTime (parameters, "Delay time", "s", 0.0f, 5.0f, 0.1f)
-    , paramFeedback (parameters, "Feedback", "", 0.0f, 0.9f, 0.7f)
-    , paramMix (parameters, "Mix", "", 0.0f, 1.0f, 1.0f)
+                         .withOutput("Output", AudioChannelSet::stereo(), true)
+#endif
+                         ),
+#endif
+      parameters(*this),
+      paramInputGain(parameters, "Input Gain", "dB", -12.0f, 12.0f, 0.0f),
+      paramGateThreshold(parameters, "Gate Threshold", "dB", -80.0f, 0.0f, -40.0f),
+      paramOutputGain(parameters, "Output Gain", "dB", -100.0f, 0.0f, 0.0f),
+      paramBypass(parameters, "Bypass", false),
+      // Delay 参数
+      paramDelayTime(parameters, "Delay Time", "s", 0.0f, 5.0f, 0.1f),
+      paramFeedback(parameters, "Feedback", "", 0.0f, 0.9f, 0.7f),
+      paramMix(parameters, "Mix", "", 0.0f, 1.0f, 1.0f),
+      // Analog Delay 参数
+      paramAnalogDelayTime(parameters, "Analog Delay Time", "s", 0.0f, 5.0f, 0.1f),
+      paramAnalogFeedback(parameters, "Analog Feedback", "", 0.0f, 0.9f, 0.7f),
+      paramAnalogMix(parameters, "Analog Mix", "", 0.0f, 1.0f, 1.0f),
+      paramLfoRate(parameters, "LFO Rate", "Hz", 0.0f, 20.0f, 0.0f),
+      paramLfoDepth(parameters, "LFO Depth", "Hz", 0.0f, 100.0f, 0.0f)
 {
-    parameters.valueTreeState.state = ValueTree (Identifier (getName().removeCharacters ("- ")));
+  parameters.valueTreeState.state = ValueTree(Identifier(getName().removeCharacters("- ")));
 }
 
-DelayAudioProcessor::~DelayAudioProcessor()
-{
-}
+DelayAudioProcessor::~DelayAudioProcessor() {}
 
 //==============================================================================
 
-void DelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+//==============================================================================
+
+float DelayAudioProcessor::readParameterValue(const String& paramId, float fallback) const
 {
-    const double smoothTime = 1e-3;
-    paramDelayTime.reset (sampleRate, smoothTime);
-    paramFeedback.reset (sampleRate, smoothTime);
-    paramMix.reset (sampleRate, smoothTime);
+  if (auto* param = parameters.valueTreeState.getParameter(paramId)) return param->convertFrom0to1(param->getValue());
 
-    //======================================
+  if (auto* value = parameters.valueTreeState.getRawParameterValue(paramId)) return value->load();
 
-    float maxDelayTime = paramDelayTime.maxValue;
-    delayBufferSamples = (int)(maxDelayTime * (float)sampleRate) + 1;
-    if (delayBufferSamples < 1)
-        delayBufferSamples = 1;
+  return fallback;
+}
 
-    delayBufferChannels = getTotalNumInputChannels();
-    delayBuffer.setSize (delayBufferChannels, delayBufferSamples);
-    delayBuffer.clear();
+void DelayAudioProcessor::syncParametersFromValueTree()
+{
+  paramInputGain.setCurrentAndTargetValue(readParameterValue(paramInputGain.paramID, paramInputGain.defaultValue));
+  paramGateThreshold.setCurrentAndTargetValue(
+      readParameterValue(paramGateThreshold.paramID, paramGateThreshold.defaultValue));
+  paramOutputGain.setCurrentAndTargetValue(readParameterValue(paramOutputGain.paramID, paramOutputGain.defaultValue));
+  // Delay
+  paramDelayTime.setCurrentAndTargetValue(readParameterValue(paramDelayTime.paramID, paramDelayTime.defaultValue));
+  paramFeedback.setCurrentAndTargetValue(readParameterValue(paramFeedback.paramID, paramFeedback.defaultValue));
+  paramMix.setCurrentAndTargetValue(readParameterValue(paramMix.paramID, paramMix.defaultValue));
+  // Analog Delay
+  paramAnalogDelayTime.setCurrentAndTargetValue(
+      readParameterValue(paramAnalogDelayTime.paramID, paramAnalogDelayTime.defaultValue));
+  paramAnalogFeedback.setCurrentAndTargetValue(
+      readParameterValue(paramAnalogFeedback.paramID, paramAnalogFeedback.defaultValue));
+  paramAnalogMix.setCurrentAndTargetValue(
+      readParameterValue(paramAnalogMix.paramID, paramAnalogMix.defaultValue));
+  paramLfoRate.setCurrentAndTargetValue(readParameterValue(paramLfoRate.paramID, paramLfoRate.defaultValue));
+  paramLfoDepth.setCurrentAndTargetValue(readParameterValue(paramLfoDepth.paramID, paramLfoDepth.defaultValue));
+  paramBypass.setCurrentAndTargetValue(readParameterValue(paramBypass.paramID, (float)paramBypass.defaultState));
+}
 
-    delayWritePosition = 0;
+void DelayAudioProcessor::ensureEffectInstances()
+{
+  // Delay
+  if (delay == nullptr) delay = std::make_unique<nudsp::camel::DelayF32>();
+  // Analog Delay
+  if (analogDelay == nullptr) analogDelay = std::make_unique<nudsp::camel::AnalogDelayF32>();
+}
+
+void DelayAudioProcessor::updateEffectParameters()
+{
+  const bool bypass = readParameterValue(paramBypass.paramID, (float)paramBypass.defaultState) >= 0.5f;
+
+  // ===== Delay 参数更新 =====
+  {
+    const double delayTime =
+        jlimit(0.0, 5.0, (double)readParameterValue(paramDelayTime.paramID, paramDelayTime.defaultValue));
+    const double feedback =
+        jlimit(0.0, 0.9, (double)readParameterValue(paramFeedback.paramID, paramFeedback.defaultValue));
+    const double mix =
+        jlimit(0.0, 1.0, (double)readParameterValue(paramMix.paramID, paramMix.defaultValue));
+
+    if (delay != nullptr)
+    {
+      delay->setDelayTime(delayTime);
+      delay->setFeedback(feedback);
+      delay->setMix(mix);
+      delay->setBypass(bypass);
+    }
+  }
+
+  // ===== Analog Delay 参数更新 =====
+  {
+    const double delayTime =
+        jlimit(0.0, 5.0,
+               (double)readParameterValue(paramAnalogDelayTime.paramID, paramAnalogDelayTime.defaultValue));
+    const double feedback =
+        jlimit(0.0, 0.9,
+               (double)readParameterValue(paramAnalogFeedback.paramID, paramAnalogFeedback.defaultValue));
+    const double mix =
+        jlimit(0.0, 1.0, (double)readParameterValue(paramAnalogMix.paramID, paramAnalogMix.defaultValue));
+    const double lfoRate =
+        jlimit(0.0, 20.0, (double)readParameterValue(paramLfoRate.paramID, paramLfoRate.defaultValue));
+    const double lfoDepth =
+        jlimit(0.0, 100.0, (double)readParameterValue(paramLfoDepth.paramID, paramLfoDepth.defaultValue));
+
+    if (analogDelay != nullptr)
+    {
+      analogDelay->setDelayTime(delayTime);
+      analogDelay->setFeedback(feedback);
+      analogDelay->setMix(mix);
+      analogDelay->setLfoRate(lfoRate);
+      analogDelay->setLfoDepth(lfoDepth);
+      analogDelay->setBypass(bypass);
+    }
+  }
+}
+
+void DelayAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+{
+  currentSampleRate = sampleRate;
+  gateEnvelope = {};
+  gateGain = {1.0f, 1.0f};
+
+  const double smoothTime = 1e-3;
+  paramInputGain.reset(sampleRate, smoothTime);
+  paramGateThreshold.reset(sampleRate, smoothTime);
+  paramOutputGain.reset(sampleRate, smoothTime);
+  // Delay
+  paramDelayTime.reset(sampleRate, smoothTime);
+  paramFeedback.reset(sampleRate, smoothTime);
+  paramMix.reset(sampleRate, smoothTime);
+  // Analog Delay
+  paramAnalogDelayTime.reset(sampleRate, smoothTime);
+  paramAnalogFeedback.reset(sampleRate, smoothTime);
+  paramAnalogMix.reset(sampleRate, smoothTime);
+  paramLfoRate.reset(sampleRate, smoothTime);
+  paramLfoDepth.reset(sampleRate, smoothTime);
+  paramBypass.reset(sampleRate, smoothTime);
+
+  syncParametersFromValueTree();
+  ensureEffectInstances();
+
+  // Prepare Delay
+  delay->prepare(sampleRate);
+  delay->reset();
+  delay->tick(1);
+
+  // Prepare Analog Delay
+  analogDelay->prepare(sampleRate);
+  analogDelay->reset();
+  analogDelay->tick(1);
+
+  updateEffectParameters();
+  delay->tick(1);
+  analogDelay->tick(1);
 }
 
 void DelayAudioProcessor::releaseResources()
 {
+  gateEnvelope = {};
+  gateGain = {1.0f, 1.0f};
 }
 
-void DelayAudioProcessor::processBlock (AudioSampleBuffer& buffer, MidiBuffer& midiMessages)
+void DelayAudioProcessor::processInputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb)
 {
-    ScopedNoDenormals noDenormals;
+  const float gain = Decibels::decibelsToGain(gainDb);
 
-    const int numInputChannels = getTotalNumInputChannels();
-    const int numOutputChannels = getTotalNumOutputChannels();
-    const int numSamples = buffer.getNumSamples();
+  for (int channel = 0; channel < numChannels; ++channel) buffer.applyGain(channel, 0, numSamples, gain);
+}
 
-    //======================================
+void DelayAudioProcessor::processGate(AudioSampleBuffer& buffer, int numChannels, int numSamples, float thresholdDb)
+{
+  const float envRelease = (float)std::exp(-1.0 / (0.050 * currentSampleRate));
+  const float gainAttack = (float)std::exp(-1.0 / (0.002 * currentSampleRate));
+  const float gainRelease = (float)std::exp(-1.0 / (0.050 * currentSampleRate));
+  const int channels = jmin(numChannels, maxChannels);
 
-    float currentDelayTime = paramDelayTime.getTargetValue() * (float)getSampleRate();
-    float currentFeedback = paramFeedback.getNextValue();
-    float currentMix = paramMix.getNextValue();
+  for (int channel = 0; channel < channels; ++channel)
+  {
+    float* data = buffer.getWritePointer(channel);
+    float env = gateEnvelope[(size_t)channel];
+    float g = gateGain[(size_t)channel];
 
-    int localWritePosition;
+    for (int i = 0; i < numSamples; ++i)
+    {
+      const float absSample = std::abs(data[i]);
+      env = jmax(absSample, env * envRelease);
 
-    for (int channel = 0; channel < numInputChannels; ++channel) {
-        float* channelData = buffer.getWritePointer (channel);
-        float* delayData = delayBuffer.getWritePointer (channel);
-        localWritePosition = delayWritePosition;
+      const float levelDb = Decibels::gainToDecibels(env + 1.0e-10f);
+      const float targetGain = levelDb >= thresholdDb ? 1.0f : 0.0f;
+      const float smoothCoeff = targetGain > g ? gainAttack : gainRelease;
+      g = targetGain + smoothCoeff * (g - targetGain);
 
-        for (int sample = 0; sample < numSamples; ++sample) {
-            const float in = channelData[sample];
-            float out = 0.0f;
-
-            float readPosition =
-                fmodf ((float)localWritePosition - currentDelayTime + (float)delayBufferSamples, delayBufferSamples);
-            int localReadPosition = floorf (readPosition);
-
-            if (localReadPosition != localWritePosition) {
-                float fraction = readPosition - (float)localReadPosition;
-                float delayed1 = delayData[(localReadPosition + 0)];
-                float delayed2 = delayData[(localReadPosition + 1) % delayBufferSamples];
-                out = delayed1 + fraction * (delayed2 - delayed1);
-
-                channelData[sample] = in + currentMix * (out - in);
-                delayData[localWritePosition] = in + out * currentFeedback;
-            }
-
-            if (++localWritePosition >= delayBufferSamples)
-                localWritePosition -= delayBufferSamples;
-        }
+      data[i] *= g;
     }
 
-    delayWritePosition = localWritePosition;
+    gateEnvelope[(size_t)channel] = env;
+    gateGain[(size_t)channel] = g;
+  }
+}
 
-    //======================================
+void DelayAudioProcessor::processOutputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb)
+{
+  const float gain = Decibels::decibelsToGain(gainDb);
 
-    for (int channel = numInputChannels; channel < numOutputChannels; ++channel)
-        buffer.clear (channel, 0, numSamples);
+  for (int channel = 0; channel < numChannels; ++channel) buffer.applyGain(channel, 0, numSamples, gain);
+}
+
+void DelayAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& midiMessages)
+{
+  ignoreUnused(midiMessages);
+  ScopedNoDenormals noDenormals;
+
+  const int numInputChannels = getTotalNumInputChannels();
+  const int numOutputChannels = getTotalNumOutputChannels();
+  const int numSamples = buffer.getNumSamples();
+
+  if (numSamples == 0) return;
+
+  ensureEffectInstances();
+  updateEffectParameters();
+
+  const float inputGainDb = readParameterValue(paramInputGain.paramID, paramInputGain.defaultValue);
+  const float gateThresholdDb = readParameterValue(paramGateThreshold.paramID, paramGateThreshold.defaultValue);
+  const float outputGainDb = readParameterValue(paramOutputGain.paramID, paramOutputGain.defaultValue);
+
+  processInputGain(buffer, numInputChannels, numSamples, inputGainDb);
+  processGate(buffer, jmin(numInputChannels, numOutputChannels), numSamples, gateThresholdDb);
+
+  const auto frameSize = (size_t)numSamples;
+  const int procChannels = jmin(numInputChannels, numOutputChannels, maxChannels);
+
+  const EffectModel model = currentModel.load();
+
+  if (model == kDelay)
+  {
+    // === Delay 处理路径（内置干湿混合） ===
+    if (delay != nullptr)
+    {
+      delay->tick(frameSize);
+      // Delay 使用 processMulti 进行多声道处理
+      const float* inPtrs[maxChannels] = {};
+      float* outPtrs[maxChannels] = {};
+      for (int ch = 0; ch < procChannels; ++ch)
+      {
+        inPtrs[(size_t)ch] = buffer.getReadPointer(ch);
+        outPtrs[(size_t)ch] = buffer.getWritePointer(ch);
+      }
+
+      delay->processMulti(inPtrs, outPtrs, frameSize, (size_t)procChannels);
+    }
+  }
+  else  // kAnalogDelay
+  {
+    // === Analog Delay 处理路径（内置干湿混合） ===
+    if (analogDelay != nullptr)
+    {
+      analogDelay->tick(frameSize);
+      const float* inPtrs[maxChannels] = {};
+      float* outPtrs[maxChannels] = {};
+      for (int ch = 0; ch < procChannels; ++ch)
+      {
+        inPtrs[(size_t)ch] = buffer.getReadPointer(ch);
+        outPtrs[(size_t)ch] = buffer.getWritePointer(ch);
+      }
+
+      analogDelay->processMulti(inPtrs, outPtrs, frameSize, (size_t)procChannels);
+    }
+  }
+
+  for (int ch = procChannels; ch < numOutputChannels; ++ch) buffer.clear(ch, 0, numSamples);
+
+  processOutputGain(buffer, numOutputChannels, numSamples, outputGainDb);
+
+  float monoPeak = 0.0f, leftPeak = 0.0f, rightPeak = 0.0f;
+  if (numOutputChannels > 0) leftPeak = buffer.getMagnitude(0, 0, numSamples);
+  if (numOutputChannels > 1) rightPeak = buffer.getMagnitude(1, 0, numSamples);
+  monoPeak = numOutputChannels > 1 ? 0.5f * (leftPeak + rightPeak) : leftPeak;
+
+  meterMono.store(monoPeak);
+  meterLeft.store(leftPeak);
+  meterRight.store(rightPeak);
 }
 
 //==============================================================================
 
-
-
-
-
-
-//==============================================================================
-
-void DelayAudioProcessor::getStateInformation (MemoryBlock& destData)
+void DelayAudioProcessor::getStateInformation(MemoryBlock& destData)
 {
-    ScopedPointer<XmlElement> xml (parameters.valueTreeState.state.createXml());
-    copyXmlToBinary (*xml, destData);
+  std::unique_ptr<XmlElement> xml(parameters.valueTreeState.state.createXml());
+  copyXmlToBinary(*xml, destData);
 }
 
-void DelayAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void DelayAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    ScopedPointer<XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState != nullptr)
-        if (xmlState->hasTagName (parameters.valueTreeState.state.getType()))
-            parameters.valueTreeState.state = ValueTree::fromXml (*xmlState);
+  std::unique_ptr<XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+  if (xmlState != nullptr)
+    if (xmlState->hasTagName(parameters.valueTreeState.state.getType()))
+      parameters.valueTreeState.state = ValueTree::fromXml(*xmlState);
 }
 
 //==============================================================================
 
-bool DelayAudioProcessor::hasEditor() const
-{
-    return true; // (change this to false if you choose to not supply an editor)
-}
+bool DelayAudioProcessor::hasEditor() const { return true; }
 
-AudioProcessorEditor* DelayAudioProcessor::createEditor()
-{
-    return new DelayAudioProcessorEditor (*this);
-}
+AudioProcessorEditor* DelayAudioProcessor::createEditor() { return new DelayAudioProcessorEditor(*this); }
 
 //==============================================================================
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool DelayAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool DelayAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-  #if JucePlugin_IsMidiEffect
-    ignoreUnused (layouts);
-    return true;
-  #else
-    // This is the place where you check if the layout is supported.
-    // In this template code we only support mono or stereo.
-    if (layouts.getMainOutputChannelSet() != AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != AudioChannelSet::stereo())
-        return false;
+#if JucePlugin_IsMidiEffect
+  ignoreUnused(layouts);
+  return true;
+#else
+  if (layouts.getMainOutputChannelSet() != AudioChannelSet::mono() &&
+      layouts.getMainOutputChannelSet() != AudioChannelSet::stereo())
+    return false;
 
-    // This checks if the input layout matches the output layout
-   #if ! JucePlugin_IsSynth
-    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
-        return false;
-   #endif
+#if !JucePlugin_IsSynth
+  if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet()) return false;
+#endif
 
-    return true;
-  #endif
+  return true;
+#endif
 }
 #endif
 
 //==============================================================================
 
-const String DelayAudioProcessor::getName() const
-{
-    return JucePlugin_Name;
-}
+const String DelayAudioProcessor::getName() const { return JucePlugin_Name; }
 
 bool DelayAudioProcessor::acceptsMidi() const
 {
-   #if JucePlugin_WantsMidiInput
-    return true;
-   #else
-    return false;
-   #endif
+#if JucePlugin_WantsMidiInput
+  return true;
+#else
+  return false;
+#endif
 }
 
 bool DelayAudioProcessor::producesMidi() const
 {
-   #if JucePlugin_ProducesMidiOutput
-    return true;
-   #else
-    return false;
-   #endif
+#if JucePlugin_ProducesMidiOutput
+  return true;
+#else
+  return false;
+#endif
 }
 
 bool DelayAudioProcessor::isMidiEffect() const
 {
-   #if JucePlugin_IsMidiEffect
-    return true;
-   #else
-    return false;
-   #endif
+#if JucePlugin_IsMidiEffect
+  return true;
+#else
+  return false;
+#endif
 }
 
-double DelayAudioProcessor::getTailLengthSeconds() const
+double DelayAudioProcessor::getTailLengthSeconds() const { return 5.0; }
+
+int DelayAudioProcessor::getNumPrograms() { return 1; }
+
+int DelayAudioProcessor::getCurrentProgram() { return 0; }
+
+void DelayAudioProcessor::setCurrentProgram(int index) { ignoreUnused(index); }
+
+const String DelayAudioProcessor::getProgramName(int index)
 {
-    return 0.0;
+  ignoreUnused(index);
+  return {};
 }
 
-int DelayAudioProcessor::getNumPrograms()
-{
-    return 1;   // NB: some hosts don't cope very well if you tell them there are 0 programs,
-                // so this should be at least 1, even if you're not really implementing programs.
-}
-
-int DelayAudioProcessor::getCurrentProgram()
-{
-    return 0;
-}
-
-void DelayAudioProcessor::setCurrentProgram (int index)
-{
-}
-
-const String DelayAudioProcessor::getProgramName (int index)
-{
-    return {};
-}
-
-void DelayAudioProcessor::changeProgramName (int index, const String& newName)
-{
-}
+void DelayAudioProcessor::changeProgramName(int index, const String& newName) { ignoreUnused(index, newName); }
 
 //==============================================================================
 
-// This creates new instances of the plugin..
-AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new DelayAudioProcessor();
-}
+AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new DelayAudioProcessor(); }
 
 //==============================================================================
