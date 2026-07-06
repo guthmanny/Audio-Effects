@@ -1,166 +1,147 @@
 /*
   ==============================================================================
 
-    This code is based on the contents of the book: "Audio Effects: Theory,
-    Implementation and Application" by Joshua D. Reiss and Andrew P. McPherson.
-
-    Code by Juan Gil <http://juangil.com/>.
-    Copyright (C) 2017 Juan Gil.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+    Phaser plugin — DSP via NuDSP camel.
+    4 phaser models: Phaser, Phase90, OTA Phaser, JFET Phaser.
 
   ==============================================================================
 */
 
 #pragma once
 
-#define _USE_MATH_DEFINES
-#include <cmath>
+#include <array>
+#include <atomic>
+#include <memory>
 
 #include "../JuceLibraryCode/JuceHeader.h"
 #include "PluginParameter.h"
+#include "nudsp/extensions/camel/phaser.hpp"
+#include "nudsp/extensions/camel/phase90.hpp"
+#include "nudsp/extensions/camel/ota_phaser.hpp"
+#include "nudsp/extensions/camel/jfet_phaser.hpp"
+#include "nudsp/amplitude/dry_wet.hpp"
+#include "nudsp/amplitude/dry_wet_f32.h"
 
 //==============================================================================
 
 class PhaserAudioProcessor : public AudioProcessor
 {
-public:
-    //==============================================================================
+ public:
+  //==============================================================================
 
-    PhaserAudioProcessor();
-    ~PhaserAudioProcessor();
+  PhaserAudioProcessor();
+  ~PhaserAudioProcessor() override;
 
-    //==============================================================================
+  //==============================================================================
 
-    void prepareToPlay (double sampleRate, int samplesPerBlock) override;
-    void releaseResources() override;
-    void processBlock (AudioSampleBuffer&, MidiBuffer&) override;
+  void prepareToPlay(double sampleRate, int samplesPerBlock) override;
+  void releaseResources() override;
+  using AudioProcessor::processBlock;
+  void processBlock(AudioSampleBuffer&, MidiBuffer&) override;
 
-    //==============================================================================
+  //==============================================================================
 
+  void getStateInformation(MemoryBlock& destData) override;
+  void setStateInformation(const void* data, int sizeInBytes) override;
 
+  //==============================================================================
 
+  AudioProcessorEditor* createEditor() override;
+  bool hasEditor() const override;
 
+  //==============================================================================
 
+#ifndef JucePlugin_PreferredChannelConfigurations
+  bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
+#endif
 
-    //==============================================================================
+  //==============================================================================
 
-    void getStateInformation (MemoryBlock& destData) override;
-    void setStateInformation (const void* data, int sizeInBytes) override;
+  const String getName() const override;
 
-    //==============================================================================
+  bool acceptsMidi() const override;
+  bool producesMidi() const override;
+  bool isMidiEffect() const override;
+  double getTailLengthSeconds() const override;
 
-    AudioProcessorEditor* createEditor() override;
-    bool hasEditor() const override;
+  //==============================================================================
 
-    //==============================================================================
+  int getNumPrograms() override;
+  int getCurrentProgram() override;
+  void setCurrentProgram(int index) override;
+  const String getProgramName(int index) override;
+  void changeProgramName(int index, const String& newName) override;
 
-   #ifndef JucePlugin_PreferredChannelConfigurations
-    bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
-   #endif
+  //==============================================================================
 
-    //==============================================================================
+  enum EffectModel { kPhaser = 0, kPhase90 = 1, kOtaPhaser = 2, kJfetPhaser = 3 };
 
-    const String getName() const override;
+  PluginParametersManager parameters;
 
-    bool acceptsMidi() const override;
-    bool producesMidi() const override;
-    bool isMidiEffect () const override;
-    double getTailLengthSeconds() const override;
+  // 公共参数（四个模型共用）
+  PluginParameterLinSlider paramInputGain;
+  PluginParameterLinSlider paramGateThreshold;
+  PluginParameterLinSlider paramOutputGain;
+  PluginParameterToggle paramBypass;
 
-    //==============================================================================
+  // Phaser / Phase90 / OTA / JFET 通用参数
+  PluginParameterLogSlider paramRate;
+  PluginParameterLogSlider paramCenter;
+  PluginParameterLinSlider paramAmount;
+  PluginParameterLinSlider paramFeedback;
+  PluginParameterLinSlider paramMix;
 
-    int getNumPrograms() override;
-    int getCurrentProgram() override;
-    void setCurrentProgram (int index) override;
-    const String getProgramName (int index) override;
-    void changeProgramName (int index, const String& newName) override;
+  float getMeterLevelMono() const noexcept { return meterMono.load(); }
+  float getMeterLevelLeft() const noexcept { return meterLeft.load(); }
+  float getMeterLevelRight() const noexcept { return meterRight.load(); }
 
-    //==============================================================================
+  EffectModel getEffectModel() const noexcept { return currentModel.load(); }
+  void setEffectModel(EffectModel model) noexcept { currentModel.store(model); }
 
-
-
-
-
-
-    //==============================================================================
-
-    StringArray waveformItemsUI = {
-        "Sine",
-        "Triangle",
-        "Square",
-        "Sawtooth"
-    };
-
-    enum waveformIndex {
-        waveformSine = 0,
-        waveformTriangle,
-        waveformSquare,
-        waveformSawtooth,
-    };
-
-    //======================================
-
-    class Filter : public IIRFilter
+  // 获取当前模型名称（用于 UI）
+  static const char* getEffectModelName(EffectModel model) noexcept
+  {
+    switch (model)
     {
-    public:
-        void updateCoefficients (const double discreteFrequency) noexcept
-        {
-            jassert (discreteFrequency > 0);
+      case kPhaser:      return "Phaser";
+      case kPhase90:     return "Phase90";
+      case kOtaPhaser:   return "OTA Phaser";
+      case kJfetPhaser:  return "JFET Phaser";
+      default:           return "Phaser";
+    }
+  }
 
-            double wc = jmin (discreteFrequency, M_PI * 0.99);
-            double tan_half_wc = tan (wc / 2.0);
+ private:
+  //==============================================================================
 
-            coefficients = IIRCoefficients (/* b0 */ tan_half_wc - 1.0,
-                                            /* b1 */ tan_half_wc + 1.0,
-                                            /* b2 */ 0.0,
-                                            /* a0 */ tan_half_wc + 1.0,
-                                            /* a1 */ tan_half_wc - 1.0,
-                                            /* a2 */ 0.0);
+  static constexpr int maxChannels = 2;
 
-            setCoefficients (coefficients);
-        }
-    };
+  float readParameterValue(const String& paramId, float fallback) const;
+  void syncParametersFromValueTree();
+  void updateEffectParameters();
+  void ensureEffectInstances();
 
-    OwnedArray<Filter> filters;
-    Array<float> filteredOutputs;
-    void updateFilters (double centreFrequency);
-    int numFiltersPerChannel;
-    unsigned int sampleCountToUpdateFilters;
-    unsigned int updateFiltersInterval;
+  void processInputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
+  void processGate(AudioSampleBuffer& buffer, int numChannels, int numSamples, float thresholdDb);
+  void processOutputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
 
-    float lfoPhase;
-    float inverseSampleRate;
-    float twoPi;
+  // Phaser DSP instances (one per model)
+  std::unique_ptr<nudsp::camel::PhaserF32> phaser;
+  std::unique_ptr<nudsp::camel::Phase90F32> phase90;
+  std::unique_ptr<nudsp::camel::OtaPhaserF32> otaPhaser;
+  std::unique_ptr<nudsp::camel::JfetPhaserF32> jfetPhaser;
+  std::array<std::unique_ptr<nudsp::DryWetF32>, maxChannels> dryWets;
+  AudioSampleBuffer dryBuffer;
+  AudioSampleBuffer fxBuffer;
 
-    float lfo (float phase, int waveform);
+  double currentSampleRate = 44100.0;
+  std::array<float, maxChannels> gateEnvelope{};
+  std::array<float, maxChannels> gateGain{1.0f, 1.0f};
 
-    //======================================
+  std::atomic<float> meterMono{0.0f};
+  std::atomic<float> meterLeft{0.0f};
+  std::atomic<float> meterRight{0.0f};
+  std::atomic<EffectModel> currentModel{kPhaser};
 
-    PluginParametersManager parameters;
-
-    PluginParameterLinSlider paramDepth;
-    PluginParameterLinSlider paramFeedback;
-    PluginParameterComboBox paramNumFilters;
-    PluginParameterLogSlider paramMinFrequency;
-    PluginParameterLogSlider paramSweepWidth;
-    PluginParameterLinSlider paramLFOfrequency;
-    PluginParameterComboBox paramLFOwaveform;
-    PluginParameterToggle paramStereo;
-
-private:
-    //==============================================================================
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PhaserAudioProcessor)
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PhaserAudioProcessor)
 };
