@@ -110,6 +110,11 @@ if(WIN32)
     endif()
 endif()
 
+target_compile_options(Chorus PRIVATE
+    -Wno-switch-enum
+    -Wno-overloaded-virtual
+)
+
 target_link_libraries(Chorus PRIVATE
     juce::juce_audio_utils
     juce::juce_audio_devices

@@ -1,7 +1,7 @@
 /*
   ==============================================================================
 
-    Chorus plugin — DSP via NuDSP camel/chorus.
+    Chorus / Phase90 plugin — DSP via NuDSP camel.
 
   ==============================================================================
 */
@@ -31,13 +31,20 @@ ChorusAudioProcessor::ChorusAudioProcessor()
       paramInputGain(parameters, "Input Gain", "dB", -12.0f, 12.0f, 0.0f),
       paramGateThreshold(parameters, "Gate Threshold", "dB", -80.0f, 0.0f, -40.0f),
       paramOutputGain(parameters, "Output Gain", "dB", -100.0f, 0.0f, 0.0f),
-      paramRate(parameters, "Rate", "Hz", 0.01f, 20.0f, 0.5f),
+      paramBypass(parameters, "Bypass", false),
+      // Chorus 参数
+      paramChorusRate(parameters, "Chorus Rate", "Hz", 0.01f, 20.0f, 0.5f),
       paramPreDelay(parameters, "PreDelay", "ms", 0.0f, 50.0f, 20.0f),
-      paramAmount(parameters, "Amount", "ms", 0.0f, 50.0f, 10.0f),
+      paramChorusAmount(parameters, "Chorus Amount", "ms", 0.0f, 50.0f, 10.0f),
       paramDry(parameters, "Dry", "", 0.0f, 1.0f, 0.7f),
       paramWet(parameters, "Wet", "", 0.0f, 1.0f, 0.5f),
-      paramFeedback(parameters, "Feedback", "", -1.0f, 1.0f, 0.15f),
-      paramBypass(parameters, "Bypass", false)
+      paramChorusFeedback(parameters, "Chorus Feedback", "", -1.0f, 1.0f, 0.15f),
+      // Phase90 参数
+      paramPhase90Rate(parameters, "Phase90 Rate", "Hz", 0.1f, 20.0f, 1.0f),
+      paramCenter(parameters, "Center", "Hz", 20.0f, 10000.0f, 1000.0f),
+      paramPhase90Amount(parameters, "Phase90 Amount", "oct", 0.0f, 4.0f, 1.0f),
+      paramPhase90Feedback(parameters, "Phase90 Feedback", "", 0.0f, 0.95f, 0.7f),
+      paramMix(parameters, "Mix", "", 0.0f, 1.0f, 0.5f)
 {
   parameters.valueTreeState.state = ValueTree(Identifier(getName().removeCharacters("- ")));
 }
@@ -63,56 +70,91 @@ void ChorusAudioProcessor::syncParametersFromValueTree()
   paramGateThreshold.setCurrentAndTargetValue(
       readParameterValue(paramGateThreshold.paramID, paramGateThreshold.defaultValue));
   paramOutputGain.setCurrentAndTargetValue(readParameterValue(paramOutputGain.paramID, paramOutputGain.defaultValue));
-  paramRate.setCurrentAndTargetValue(readParameterValue(paramRate.paramID, paramRate.defaultValue));
+  // Chorus
+  paramChorusRate.setCurrentAndTargetValue(readParameterValue(paramChorusRate.paramID, paramChorusRate.defaultValue));
   paramPreDelay.setCurrentAndTargetValue(readParameterValue(paramPreDelay.paramID, paramPreDelay.defaultValue));
-  paramAmount.setCurrentAndTargetValue(readParameterValue(paramAmount.paramID, paramAmount.defaultValue));
+  paramChorusAmount.setCurrentAndTargetValue(
+      readParameterValue(paramChorusAmount.paramID, paramChorusAmount.defaultValue));
   paramDry.setCurrentAndTargetValue(readParameterValue(paramDry.paramID, paramDry.defaultValue));
   paramWet.setCurrentAndTargetValue(readParameterValue(paramWet.paramID, paramWet.defaultValue));
-  paramFeedback.setCurrentAndTargetValue(readParameterValue(paramFeedback.paramID, paramFeedback.defaultValue));
+  paramChorusFeedback.setCurrentAndTargetValue(
+      readParameterValue(paramChorusFeedback.paramID, paramChorusFeedback.defaultValue));
+  // Phase90
+  paramPhase90Rate.setCurrentAndTargetValue(
+      readParameterValue(paramPhase90Rate.paramID, paramPhase90Rate.defaultValue));
+  paramCenter.setCurrentAndTargetValue(readParameterValue(paramCenter.paramID, paramCenter.defaultValue));
+  paramPhase90Amount.setCurrentAndTargetValue(
+      readParameterValue(paramPhase90Amount.paramID, paramPhase90Amount.defaultValue));
+  paramPhase90Feedback.setCurrentAndTargetValue(
+      readParameterValue(paramPhase90Feedback.paramID, paramPhase90Feedback.defaultValue));
+  paramMix.setCurrentAndTargetValue(readParameterValue(paramMix.paramID, paramMix.defaultValue));
   paramBypass.setCurrentAndTargetValue(readParameterValue(paramBypass.paramID, (float)paramBypass.defaultState));
 }
 
 void ChorusAudioProcessor::ensureEffectInstances()
 {
+  // Chorus
   if (chorus == nullptr) chorus = std::make_unique<nudsp::camel::ChorusF32>();
-
-  for (auto& dryWet : dryWets)
+  for (auto& dw : dryWets)
   {
-    if (dryWet == nullptr) dryWet = std::make_unique<nudsp::DryWetF32>();
+    if (dw == nullptr) dw = std::make_unique<nudsp::DryWetF32>();
   }
+  // Phase90
+  if (phase90 == nullptr) phase90 = std::make_unique<nudsp::camel::Phase90F32>();
 }
 
 void ChorusAudioProcessor::updateEffectParameters()
 {
-  // 参数平滑由 DSP 层 delay_line 内部的 smoother 处理，
-  // JUCE 侧直接读取瞬时值，不额外平滑。
-  const double rate = jmax(0.01, (double)readParameterValue(paramRate.paramID, paramRate.defaultValue));
-  const double preDelay = (double)readParameterValue(paramPreDelay.paramID, paramPreDelay.defaultValue);
-  const double amount = (double)readParameterValue(paramAmount.paramID, paramAmount.defaultValue);
-  const double feedback = (double)readParameterValue(paramFeedback.paramID, paramFeedback.defaultValue);
-  const float mix = jlimit(0.0f, 1.0f, readParameterValue(paramWet.paramID, paramWet.defaultValue));
-  const bool bypass = readParameterValue(paramBypass.paramID, (float)paramBypass.defaultState) >= 0.5f;
-
-  // 验证参数是否正确读取
-  // DBG("preDelay=" + String(preDelay) + " amount=" + String(amount) + " -> center=" + String(preDelay + amount *
-  // 0.5));
-
-  if (chorus != nullptr)
+  // ===== Chorus 参数更新 =====
   {
-    chorus->setRate(rate);
-    chorus->setDelay(preDelay + amount * 0.5);
-    chorus->setAmount(amount * 0.5);
-    chorus->setCoeffX(0.0);
-    chorus->setCoeffMod(1.0);
-    chorus->setCoeffFb(feedback);
-    chorus->setBypass(bypass);
+    const double rate = jmax(0.01, (double)readParameterValue(paramChorusRate.paramID, paramChorusRate.defaultValue));
+    const double preDelay = (double)readParameterValue(paramPreDelay.paramID, paramPreDelay.defaultValue);
+    const double amount = (double)readParameterValue(paramChorusAmount.paramID, paramChorusAmount.defaultValue);
+    const double feedback =
+        (double)readParameterValue(paramChorusFeedback.paramID, paramChorusFeedback.defaultValue);
+    const float wet = jlimit(0.0f, 1.0f, readParameterValue(paramWet.paramID, paramWet.defaultValue));
+    const bool bypass = readParameterValue(paramBypass.paramID, (float)paramBypass.defaultState) >= 0.5f;
+
+    if (chorus != nullptr)
+    {
+      chorus->setRate(rate);
+      chorus->setDelay(preDelay + amount * 0.5);
+      chorus->setAmount(amount * 0.5);
+      chorus->setCoeffX(0.0);
+      chorus->setCoeffMod(1.0);
+      chorus->setCoeffFb(feedback);
+      chorus->setBypass(bypass);
+    }
+
+    for (auto& dw : dryWets)
+    {
+      if (dw == nullptr) continue;
+      dw->setWet(wet);
+      dw->setBypass(bypass);
+    }
   }
 
-  for (auto& dryWet : dryWets)
+  // ===== Phase90 参数更新 =====
   {
-    if (dryWet == nullptr) continue;
-    dryWet->setWet(mix);
-    dryWet->setBypass(bypass);
+    const double rate = jmax(0.1, (double)readParameterValue(paramPhase90Rate.paramID, paramPhase90Rate.defaultValue));
+    const double center =
+        jlimit(20.0, 10000.0, (double)readParameterValue(paramCenter.paramID, paramCenter.defaultValue));
+    const double amount =
+        jlimit(0.0, 4.0, (double)readParameterValue(paramPhase90Amount.paramID, paramPhase90Amount.defaultValue));
+    const double feedback =
+        jlimit(0.0, 0.95, (double)readParameterValue(paramPhase90Feedback.paramID, paramPhase90Feedback.defaultValue));
+    const float mix = jlimit(0.0f, 1.0f, readParameterValue(paramMix.paramID, paramMix.defaultValue));
+    const bool bypass = readParameterValue(paramBypass.paramID, (float)paramBypass.defaultState) >= 0.5f;
+
+    if (phase90 != nullptr)
+    {
+      phase90->setRate(rate);
+      phase90->setCenter(center);
+      phase90->setAmount(amount);
+      phase90->setFeedback(feedback);
+      phase90->setMix(mix);
+      phase90->setBypass(bypass);
+    }
   }
 }
 
@@ -126,36 +168,49 @@ void ChorusAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   paramInputGain.reset(sampleRate, smoothTime);
   paramGateThreshold.reset(sampleRate, smoothTime);
   paramOutputGain.reset(sampleRate, smoothTime);
-  paramRate.reset(sampleRate, smoothTime);
+  // Chorus
+  paramChorusRate.reset(sampleRate, smoothTime);
   paramPreDelay.reset(sampleRate, smoothTime);
-  paramAmount.reset(sampleRate, smoothTime);
+  paramChorusAmount.reset(sampleRate, smoothTime);
   paramDry.reset(sampleRate, smoothTime);
   paramWet.reset(sampleRate, smoothTime);
-  paramFeedback.reset(sampleRate, smoothTime);
+  paramChorusFeedback.reset(sampleRate, smoothTime);
+  // Phase90
+  paramPhase90Rate.reset(sampleRate, smoothTime);
+  paramCenter.reset(sampleRate, smoothTime);
+  paramPhase90Amount.reset(sampleRate, smoothTime);
+  paramPhase90Feedback.reset(sampleRate, smoothTime);
+  paramMix.reset(sampleRate, smoothTime);
   paramBypass.reset(sampleRate, smoothTime);
 
   syncParametersFromValueTree();
   ensureEffectInstances();
 
+  // Prepare Chorus
   chorus->prepare(sampleRate);
   chorus->reset();
   chorus->tick(1);
-
-  for (auto& dryWet : dryWets)
+  for (auto& dw : dryWets)
   {
-    dryWet->setSmoothMode(NX_SMOOTH_EXPONENTIAL, (float)sampleRate, 10.0f);
-    nx_dry_wet_tick_f32(dryWet->getRawPointer(), 1);
+    dw->setSmoothMode(NX_SMOOTH_EXPONENTIAL, (float)sampleRate, 10.0f);
+    nx_dry_wet_tick_f32(dw->getRawPointer(), 1);
   }
+
+  // Prepare Phase90
+  phase90->prepare(sampleRate);
+  phase90->reset();
+  phase90->tick(1);
 
   const int numChannels = jmax(getTotalNumInputChannels(), getTotalNumOutputChannels());
   dryBuffer.setSize(numChannels, samplesPerBlock);
   monoBuffer.setSize(1, samplesPerBlock);
   chorusBuffer.setSize(1, samplesPerBlock);
+  phase90Buffer.setSize(numChannels, samplesPerBlock);
 
   updateEffectParameters();
   chorus->tick(1);
-
-  for (auto& dryWet : dryWets) nx_dry_wet_tick_f32(dryWet->getRawPointer(), 1);
+  for (auto& dw : dryWets) nx_dry_wet_tick_f32(dw->getRawPointer(), 1);
+  phase90->tick(1);
 }
 
 void ChorusAudioProcessor::releaseResources()
@@ -163,6 +218,7 @@ void ChorusAudioProcessor::releaseResources()
   dryBuffer.setSize(0, 0);
   monoBuffer.setSize(0, 0);
   chorusBuffer.setSize(0, 0);
+  phase90Buffer.setSize(0, 0);
   gateEnvelope = {};
   gateGain = {1.0f, 1.0f};
 }
@@ -223,14 +279,16 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
 
   if (numSamples == 0) return;
 
+  // 确保缓冲区足够大
+  const int bufCh = jmax(numInputChannels, numOutputChannels);
   if (dryBuffer.getNumSamples() < numSamples)
   {
-    dryBuffer.setSize(jmax(numInputChannels, numOutputChannels), numSamples, false, false, true);
+    dryBuffer.setSize(bufCh, numSamples, false, false, true);
     monoBuffer.setSize(1, numSamples, false, false, true);
     chorusBuffer.setSize(1, numSamples, false, false, true);
+    phase90Buffer.setSize(bufCh, numSamples, false, false, true);
   }
 
-  // 参数平滑由 DSP 层 delay_line 内部处理，JUCE 侧不额外平滑
   ensureEffectInstances();
   updateEffectParameters();
 
@@ -242,64 +300,84 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
   processGate(buffer, jmin(numInputChannels, numOutputChannels), numSamples, gateThresholdDb);
 
   const auto frameSize = (size_t)numSamples;
+  const int procChannels = jmin(numInputChannels, numOutputChannels, maxChannels);
 
-  for (int channel = 0; channel < numInputChannels; ++channel)
-    dryBuffer.copyFrom(channel, 0, buffer, channel, 0, numSamples);
+  const EffectModel model = currentModel.load();
 
-  float* monoData = monoBuffer.getWritePointer(0);
-
-  if (numInputChannels >= 2)
+  if (model == kChorus)
   {
-    const float* left = dryBuffer.getReadPointer(0);
-    const float* right = dryBuffer.getReadPointer(1);
+    // === Chorus 处理路径 ===
+    // 保存干信号
+    for (int ch = 0; ch < numInputChannels; ++ch)
+      dryBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
 
-    for (int i = 0; i < numSamples; ++i) monoData[i] = 0.5f * (left[i] + right[i]);
+    // 混音到单声道
+    float* monoData = monoBuffer.getWritePointer(0);
+    if (numInputChannels >= 2)
+    {
+      const float* left = dryBuffer.getReadPointer(0);
+      const float* right = dryBuffer.getReadPointer(1);
+      for (int i = 0; i < numSamples; ++i) monoData[i] = 0.5f * (left[i] + right[i]);
+    }
+    else
+    {
+      FloatVectorOperations::copy(monoData, dryBuffer.getReadPointer(0), numSamples);
+    }
+
+    if (chorus != nullptr)
+    {
+      chorus->tick(frameSize);
+      float* chorusData = chorusBuffer.getWritePointer(0);
+      chorus->process(monoData, chorusData, frameSize);
+    }
+    else
+    {
+      FloatVectorOperations::copy(chorusBuffer.getWritePointer(0), monoData, numSamples);
+    }
+
+    // 干湿混合
+    const float* chorusData = chorusBuffer.getReadPointer(0);
+    for (int ch = 0; ch < procChannels; ++ch)
+    {
+      auto& dw = dryWets[(size_t)ch];
+      if (dw == nullptr) continue;
+      if (auto* raw = dw->getRawPointer()) nx_dry_wet_tick_f32(raw, frameSize);
+      const float* dryData = dryBuffer.getReadPointer(ch);
+      float* outData = buffer.getWritePointer(ch);
+      dw->process(dryData, chorusData, outData, frameSize);
+    }
   }
-  else
+  else  // kPhase90
   {
-    FloatVectorOperations::copy(monoData, dryBuffer.getReadPointer(0), numSamples);
+    // === Phase90 处理路径 ===
+    // Phase90 内置干湿混合（Mix 参数），直接处理每个声道
+    if (phase90 != nullptr)
+    {
+      const float* inPtrs[maxChannels] = {};
+      float* outPtrs[maxChannels] = {};
+      for (int ch = 0; ch < procChannels; ++ch)
+      {
+        inPtrs[(size_t)ch] = buffer.getReadPointer(ch);
+        outPtrs[(size_t)ch] = phase90Buffer.getWritePointer(ch);
+      }
+
+      phase90->tick(frameSize);
+      phase90->processMulti(inPtrs, outPtrs, frameSize, (size_t)procChannels);
+
+      for (int ch = 0; ch < procChannels; ++ch)
+      {
+        FloatVectorOperations::copy(buffer.getWritePointer(ch), phase90Buffer.getReadPointer(ch), numSamples);
+      }
+    }
   }
 
-  if (chorus != nullptr)
-  {
-    // 传递实际 frameSize 给 tick，使 delay_line 内部 smoother 正确推进
-    chorus->tick(frameSize);
-
-    float* chorusData = chorusBuffer.getWritePointer(0);
-    chorus->process(monoData, chorusData, frameSize);
-  }
-  else
-  {
-    FloatVectorOperations::copy(chorusBuffer.getWritePointer(0), monoData, numSamples);
-  }
-
-  const float* chorusData = chorusBuffer.getReadPointer(0);
-  const int mixChannels = jmin(numInputChannels, numOutputChannels, maxChannels);
-
-  for (int channel = 0; channel < mixChannels; ++channel)
-  {
-    auto& dryWet = dryWets[(size_t)channel];
-    if (dryWet == nullptr) continue;
-
-    if (auto* dryWetRaw = dryWet->getRawPointer()) nx_dry_wet_tick_f32(dryWetRaw, frameSize);
-
-    const float* dryData = dryBuffer.getReadPointer(channel);
-    float* outData = buffer.getWritePointer(channel);
-    dryWet->process(dryData, chorusData, outData, frameSize);
-  }
-
-  for (int channel = numInputChannels; channel < numOutputChannels; ++channel) buffer.clear(channel, 0, numSamples);
+  for (int ch = procChannels; ch < numOutputChannels; ++ch) buffer.clear(ch, 0, numSamples);
 
   processOutputGain(buffer, numOutputChannels, numSamples, outputGainDb);
 
-  float monoPeak = 0.0f;
-  float leftPeak = 0.0f;
-  float rightPeak = 0.0f;
-
+  float monoPeak = 0.0f, leftPeak = 0.0f, rightPeak = 0.0f;
   if (numOutputChannels > 0) leftPeak = buffer.getMagnitude(0, 0, numSamples);
-
   if (numOutputChannels > 1) rightPeak = buffer.getMagnitude(1, 0, numSamples);
-
   monoPeak = numOutputChannels > 1 ? 0.5f * (leftPeak + rightPeak) : leftPeak;
 
   meterMono.store(monoPeak);

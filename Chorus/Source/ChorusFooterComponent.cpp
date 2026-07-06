@@ -117,3 +117,15 @@ void ChorusFooterComponent::resized()
 
     rightBox.performLayout (area.withLeft (xPos + 8));
 }
+
+int ChorusFooterComponent::getMinimumContentWidth (int heightHint)
+{
+    const int h = heightHint > 0 ? heightHint : (getHeight() > 0 ? getHeight() : 32);
+    const int btnSize = juce::jmin (h, 64);
+    const auto font = AtomLookAndFeel::getUIFont (AtomLookAndFeel::getSystemUIFontHeight(), juce::Font::plain);
+    const int qualityTextW = juce::roundToInt (font.getStringWidthFloat ("QUALITY:")) + 6;
+    const int viewTextW = juce::roundToInt (font.getStringWidthFloat ("VIEW:")) + 6;
+    const int comboW = 100;
+    const int margin = 16;
+    return margin * 2 + btnSize + 24 + qualityTextW + comboW + 10 + viewTextW + comboW;
+}

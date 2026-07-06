@@ -1,7 +1,7 @@
 /*
   ==============================================================================
 
-    Chorus plugin — DSP via NuDSP camel/chorus.
+    Chorus / Phase90 plugin — DSP via NuDSP camel.
 
   ==============================================================================
 */
@@ -14,9 +14,10 @@
 
 #include "../JuceLibraryCode/JuceHeader.h"
 #include "PluginParameter.h"
+#include "nudsp/extensions/camel/chorus.hpp"
+#include "nudsp/extensions/camel/phase90.hpp"
 #include "nudsp/amplitude/dry_wet.hpp"
 #include "nudsp/amplitude/dry_wet_f32.h"
-#include "nudsp/extensions/camel/chorus.hpp"
 
 //==============================================================================
 
@@ -32,6 +33,7 @@ class ChorusAudioProcessor : public AudioProcessor
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   void releaseResources() override;
+  using AudioProcessor::processBlock;
   void processBlock(AudioSampleBuffer&, MidiBuffer&) override;
 
   //==============================================================================
@@ -69,22 +71,37 @@ class ChorusAudioProcessor : public AudioProcessor
 
   //==============================================================================
 
+  enum EffectModel { kChorus = 0, kPhase90 = 1 };
+
   PluginParametersManager parameters;
 
+  // 公共参数（两个模型共用）
   PluginParameterLinSlider paramInputGain;
   PluginParameterLinSlider paramGateThreshold;
   PluginParameterLinSlider paramOutputGain;
-  PluginParameterLinSlider paramRate;
+  PluginParameterToggle paramBypass;
+
+  // Chorus 模型参数
+  PluginParameterLinSlider paramChorusRate;
   PluginParameterLinSlider paramPreDelay;
-  PluginParameterLinSlider paramAmount;
+  PluginParameterLinSlider paramChorusAmount;
   PluginParameterLinSlider paramDry;
   PluginParameterLinSlider paramWet;
-  PluginParameterLinSlider paramFeedback;
-  PluginParameterToggle paramBypass;
+  PluginParameterLinSlider paramChorusFeedback;
+
+  // Phase90 模型参数
+  PluginParameterLogSlider paramPhase90Rate;
+  PluginParameterLogSlider paramCenter;
+  PluginParameterLinSlider paramPhase90Amount;
+  PluginParameterLinSlider paramPhase90Feedback;
+  PluginParameterLinSlider paramMix;
 
   float getMeterLevelMono() const noexcept { return meterMono.load(); }
   float getMeterLevelLeft() const noexcept { return meterLeft.load(); }
   float getMeterLevelRight() const noexcept { return meterRight.load(); }
+
+  EffectModel getEffectModel() const noexcept { return currentModel.load(); }
+  void setEffectModel(EffectModel model) noexcept { currentModel.store(model); }
 
  private:
   //==============================================================================
@@ -100,12 +117,16 @@ class ChorusAudioProcessor : public AudioProcessor
   void processGate(AudioSampleBuffer& buffer, int numChannels, int numSamples, float thresholdDb);
   void processOutputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
 
+  // Chorus DSP
   std::unique_ptr<nudsp::camel::ChorusF32> chorus;
   std::array<std::unique_ptr<nudsp::DryWetF32>, maxChannels> dryWets;
-
   AudioSampleBuffer dryBuffer;
   AudioSampleBuffer monoBuffer;
   AudioSampleBuffer chorusBuffer;
+
+  // Phase90 DSP
+  std::unique_ptr<nudsp::camel::Phase90F32> phase90;
+  AudioSampleBuffer phase90Buffer;
 
   double currentSampleRate = 44100.0;
   std::array<float, maxChannels> gateEnvelope{};
@@ -114,6 +135,7 @@ class ChorusAudioProcessor : public AudioProcessor
   std::atomic<float> meterMono{0.0f};
   std::atomic<float> meterLeft{0.0f};
   std::atomic<float> meterRight{0.0f};
+  std::atomic<EffectModel> currentModel{kChorus};
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ChorusAudioProcessor)
 };

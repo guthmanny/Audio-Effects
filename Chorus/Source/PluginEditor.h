@@ -34,6 +34,8 @@ public:
     void showAudioSettingsDialog();
 #endif
 
+    void updateModelUI();
+
 private:
     void timerCallback() override;
 #if JucePlugin_Build_Standalone
@@ -58,12 +60,29 @@ private:
 
     float zoomFactor = 1.0f;
     int bodyContentHeight = 0;
+    float savedLabelReserveDlu = 0.0f;
+    float savedValueReserveDlu = 0.0f;
 
     AtomLookAndFeel atomLookAndFeel { atom::ThemeType::Dark };
     ChorusHeaderComponent headerBar;
     ChorusFooterComponent footerBar;
     ChorusBodyContent bodyContent;
     juce::Viewport bodyViewport;
+
+    // Chorus model slider pointers
+    atom::Slider* chorusRateSlider = nullptr;
+    atom::Slider* preDelaySlider = nullptr;
+    atom::Slider* chorusAmountSlider = nullptr;
+    atom::Slider* drySlider = nullptr;
+    atom::Slider* wetSlider = nullptr;
+    atom::Slider* chorusFeedbackSlider = nullptr;
+
+    // Phase90 model slider pointers
+    atom::Slider* phase90RateSlider = nullptr;
+    atom::Slider* centerSlider = nullptr;
+    atom::Slider* phase90AmountSlider = nullptr;
+    atom::Slider* phase90FeedbackSlider = nullptr;
+    atom::Slider* mixSlider = nullptr;
 
     juce::OwnedArray<atom::Slider> sliders;
     juce::OwnedArray<atom::ToggleButton> toggles;

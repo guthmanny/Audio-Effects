@@ -883,6 +883,12 @@
 },
 {
   "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/phaser/phase90_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/phaser/phase90_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/phaser/phase90_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/phaser/phase90_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
   "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/reverb/reverb_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/reverb/reverb_f32.c",
   "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/reverb/reverb_f32.c",
   "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/reverb/reverb_f32.c.o"

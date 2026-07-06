@@ -61,6 +61,32 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   bodyViewport.setScrollBarsShown(true, false);
   bodyViewport.getVerticalScrollBar().setColour(juce::ScrollBar::thumbColourId, juce::Colours::grey);
 
+  // 模型选择：通过 Footer MIDI 端口图标弹出菜单
+  footerBar.getBtnMidiPort().onClick = [this]
+  {
+    juce::PopupMenu menu;
+    menu.addItem(1, "Chorus", true, processor.getEffectModel() == ChorusAudioProcessor::kChorus);
+    menu.addItem(2, "Phase90", true, processor.getEffectModel() == ChorusAudioProcessor::kPhase90);
+
+    menu.showMenuAsync(juce::PopupMenu::Options(),
+                       [this](int result)
+                       {
+                         if (result == 0) return;
+                         ChorusAudioProcessor::EffectModel model;
+                         switch (result)
+                         {
+                           case 2:
+                             model = ChorusAudioProcessor::kPhase90;
+                             break;
+                           default:
+                             model = ChorusAudioProcessor::kChorus;
+                             break;
+                         }
+                         processor.setEffectModel(model);
+                         updateModelUI();
+                       });
+  };
+
   headerBar.getBtnSettings().onClick = [this]
   {
 #if JucePlugin_Build_Standalone
@@ -70,9 +96,13 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
 
   headerBar.getTapTempo().onBPMChanged = [this](double bpm)
   {
-    if (auto* param = processor.parameters.valueTreeState.getParameter("rate"))
+    // 根据当前模型，Tap Tempo 同步到对应的 Rate 参数
+    const String rateParamId = (processor.getEffectModel() == ChorusAudioProcessor::kPhase90)
+                                   ? processor.paramPhase90Rate.paramID
+                                   : processor.paramChorusRate.paramID;
+    if (auto* param = processor.parameters.valueTreeState.getParameter(rateParamId))
     {
-      const float rateHz = juce::jlimit(0.01f, 20.0f, (float)(bpm / 60.0));
+      const float rateHz = juce::jlimit(0.1f, 20.0f, (float)(bpm / 60.0));
       param->setValueNotifyingHost(param->convertTo0to1(rateHz));
     }
   };
@@ -91,7 +121,6 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   bodyContentHeight = bodyMargin;
 
   const juce::StringArray headerParamIds{"inputgain", "gatethreshold", "outputgain"};
-  const juce::StringArray hiddenParamIds{"dry"};  // 不可用的参数，不在 UI 中显示
 
   const auto uiFont = AtomLookAndFeel::getUIFont(AtomLookAndFeel::getSystemUIFontHeight(), juce::Font::plain);
   const float uiFontHeight = AtomLookAndFeel::getSystemUIFontHeight();
@@ -102,7 +131,7 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   {
     if (const auto* parameter = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameters[i]))
     {
-      if (headerParamIds.contains(parameter->paramID) || hiddenParamIds.contains(parameter->paramID)) continue;
+      if (headerParamIds.contains(parameter->paramID)) continue;
 
       if (processor.parameters.parameterTypes[i] != "Slider") continue;
 
@@ -110,10 +139,8 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
 
       if (auto* param = processor.parameters.valueTreeState.getParameter(parameter->paramID))
       {
-        // 数值文本宽度（如 "20.00"）
         const float numW0 = uiFont.getStringWidthFloat(param->getText(0.0f, 0));
         const float numW1 = uiFont.getStringWidthFloat(param->getText(1.0f, 0));
-        // 加上后缀宽度（如 "ms"），因为 atom::Slider 实际显示的是 getTextFromValue() = 数值 + 后缀
         const float suffixW = uiFont.getStringWidthFloat(parameter->label);
         maxValueTextWidth = juce::jmax(maxValueTextWidth, numW0 + suffixW, numW1 + suffixW);
       }
@@ -122,16 +149,43 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
 
   const float labelReserveDlu = maxParamLabelWidth > 0.0f ? maxParamLabelWidth * 8.0f / uiFontHeight : 0.0f;
   const float valueReserveDlu = maxValueTextWidth > 0.0f ? (maxValueTextWidth + 12.0f) * 8.0f / uiFontHeight : 0.0f;
+  savedLabelReserveDlu = labelReserveDlu;
+  savedValueReserveDlu = valueReserveDlu;
 
   for (int i = 0; i < parameters.size(); ++i)
   {
     if (const auto* parameter = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameters[i]))
     {
-      if (headerParamIds.contains(parameter->paramID) || hiddenParamIds.contains(parameter->paramID)) continue;
+      if (headerParamIds.contains(parameter->paramID)) continue;
 
       if (processor.parameters.parameterTypes[i] == "Slider")
       {
         auto* aSlider = sliders.add(new atom::Slider());
+
+        // 跟踪模型特定 slider 指针
+        if (parameter->paramID == "chorusrate")
+          chorusRateSlider = aSlider;
+        else if (parameter->paramID == "predelay")
+          preDelaySlider = aSlider;
+        else if (parameter->paramID == "chorusamount")
+          chorusAmountSlider = aSlider;
+        else if (parameter->paramID == "dry")
+          drySlider = aSlider;
+        else if (parameter->paramID == "wet")
+          wetSlider = aSlider;
+        else if (parameter->paramID == "chorusfeedback")
+          chorusFeedbackSlider = aSlider;
+        else if (parameter->paramID == "phase90rate")
+          phase90RateSlider = aSlider;
+        else if (parameter->paramID == "center")
+          centerSlider = aSlider;
+        else if (parameter->paramID == "phase90amount")
+          phase90AmountSlider = aSlider;
+        else if (parameter->paramID == "phase90feedback")
+          phase90FeedbackSlider = aSlider;
+        else if (parameter->paramID == "mix")
+          mixSlider = aSlider;
+
         aSlider->setTextValueSuffix(parameter->label);
         aSlider->setValueLabelPos(atom::Slider::ValueLabelPos::Right);
 
@@ -141,7 +195,8 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
         styleOverride.metrics.linearHorizontalValueLabelReserveDlu = valueReserveDlu;
         atomLookAndFeel.setSliderStyleOverride(*aSlider, styleOverride);
 
-        sliderAttachments.add(new SliderAttachment(processor.parameters.valueTreeState, parameter->paramID, *aSlider));
+        sliderAttachments.add(
+            new SliderAttachment(processor.parameters.valueTreeState, parameter->paramID, *aSlider));
 
         bodyContent.addAndMakeVisible(aSlider);
         bodyComponents.add(aSlider);
@@ -152,7 +207,8 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
         auto* aButton = toggles.add(new atom::ToggleButton(parameter->paramID, {}));
         aButton->setToggleState(parameter->getDefaultValue(), juce::dontSendNotification);
 
-        buttonAttachments.add(new ButtonAttachment(processor.parameters.valueTreeState, parameter->paramID, *aButton));
+        buttonAttachments.add(
+            new ButtonAttachment(processor.parameters.valueTreeState, parameter->paramID, *aButton));
 
         auto* row = new SettingsCardRow(parameter->paramID + "Row", parameter->name, *aButton, cardRowHeight);
         settingRows.add(row);
@@ -182,6 +238,7 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   bodyContentHeight += bodyMargin;
 
   applyZoom(1.0f);
+  updateModelUI();
   startTimerHz(30);
 
 #if JucePlugin_Build_Standalone
@@ -217,7 +274,12 @@ int ChorusAudioProcessorEditor::getBodyContentHeight() const noexcept
   return juce::roundToInt((float)bodyContentHeight * zoomFactor);
 }
 
-int ChorusAudioProcessorEditor::getEditorWidth() { return headerBar.getMinimumContentWidth(getHeaderHeight()); }
+int ChorusAudioProcessorEditor::getEditorWidth()
+{
+  const int headerW = headerBar.getMinimumContentWidth(getHeaderHeight());
+  const int footerW = footerBar.getMinimumContentWidth(getFooterHeight());
+  return juce::jmax(headerW, footerW);
+}
 
 int ChorusAudioProcessorEditor::getNaturalHeight() const noexcept
 {
@@ -231,11 +293,6 @@ void ChorusAudioProcessorEditor::applyZoom(float newZoom)
   const int width = getEditorWidth();
   const int height = getNaturalHeight();
 
-  // Fixed size: the editor (and therefore the Standalone window) is not
-  // freely stretchable. Size changes only happen via the footer VIEW zoom.
-  // min == max makes the host treat the editor as non-resizable, so the
-  // outer window always matches the editor bounds and no background mismatch
-  // can appear from dragging the window frame.
   setResizeLimits(width, height, width, height);
   setSize(width, height);
 
@@ -269,12 +326,49 @@ void ChorusAudioProcessorEditor::resized()
   auto area = bodyContent.getLocalBounds().reduced(juce::roundToInt((float)bodyMargin * zoomFactor), 0);
   for (auto* component : bodyComponents)
   {
+    if (!component->isVisible()) continue;
     const int rowHeight = dynamic_cast<atom::Slider*>(component) != nullptr
                               ? juce::roundToInt((float)sliderHeight * zoomFactor)
                               : juce::roundToInt((float)cardRowHeight * zoomFactor);
     component->setBounds(area.removeFromTop(rowHeight));
     area.removeFromTop(juce::roundToInt((float)bodyPadding * zoomFactor));
   }
+}
+
+//==============================================================================
+// 模型切换：显示/隐藏对应的参数
+//==============================================================================
+
+void ChorusAudioProcessorEditor::updateModelUI()
+{
+  const bool isChorus = (processor.getEffectModel() == ChorusAudioProcessor::kChorus);
+
+  // Chorus 参数可见性
+  if (chorusRateSlider != nullptr) chorusRateSlider->setVisible(isChorus);
+  if (preDelaySlider != nullptr) preDelaySlider->setVisible(isChorus);
+  if (chorusAmountSlider != nullptr) chorusAmountSlider->setVisible(isChorus);
+  if (drySlider != nullptr) drySlider->setVisible(isChorus);
+  if (wetSlider != nullptr) wetSlider->setVisible(isChorus);
+  if (chorusFeedbackSlider != nullptr) chorusFeedbackSlider->setVisible(isChorus);
+
+  // Phase90 参数可见性
+  if (phase90RateSlider != nullptr) phase90RateSlider->setVisible(!isChorus);
+  if (centerSlider != nullptr) centerSlider->setVisible(!isChorus);
+  if (phase90AmountSlider != nullptr) phase90AmountSlider->setVisible(!isChorus);
+  if (phase90FeedbackSlider != nullptr) phase90FeedbackSlider->setVisible(!isChorus);
+  if (mixSlider != nullptr) mixSlider->setVisible(!isChorus);
+
+  // 更新 body content 高度并重新布局
+  bodyContentHeight = bodyMargin;
+  for (auto* component : bodyComponents)
+  {
+    if (!component->isVisible()) continue;
+    const int rowHeight = dynamic_cast<atom::Slider*>(component) != nullptr ? sliderHeight : cardRowHeight;
+    bodyContentHeight += rowHeight + bodyPadding;
+  }
+  bodyContentHeight += bodyMargin;
+
+  applyZoom(zoomFactor);
 }
 
 #if JucePlugin_Build_Standalone
@@ -301,18 +395,14 @@ void ChorusAudioProcessorEditor::showAudioSettingsDialog()
 
   auto* panel = new AudioSettingsPanel(window->getDeviceManager(), atomLookAndFeel);
 
-  // 初始大小使用固定值，与反向约束的最小值解耦
   panel->setSize(560, 420);
 
-  // 计算反向约束的最小值，用于限制对话框缩小
   const int minPanelW = panel->getMinimumPanelWidth();
   const int minPanelH = panel->getMinimumPanelHeight();
-  // 最小值上限 520px，避免因设备名过长导致对话框无法缩小到合理尺寸
   constexpr int kMaxMinW = 520;
   constexpr int kMaxMinH = 600;
   const int clampedMinW = juce::jmin(minPanelW, kMaxMinW);
   const int clampedMinH = juce::jmin(minPanelH, kMaxMinH);
-  // 对话框最小尺寸（内容 + 窗口装饰预留）
   const int minDialogW = juce::jmax(400, clampedMinW + 20);
   const int minDialogH = juce::jmax(300, clampedMinH + 40);
 
