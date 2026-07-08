@@ -1,0 +1,17 @@
+Builds/
+JuceLibraryCode/
+*.jucer
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.vcxproj*
+*.sln
+*.xcodeproj
+*.xcworkspace
+build/
+build-fix/
+build-release/
+cmake-build-*/
+.DS_Store
+Thumbs.db

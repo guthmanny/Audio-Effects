@@ -817,6 +817,30 @@
 },
 {
   "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/core/delay/allpass_filter_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/allpass_filter_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/allpass_filter_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/core/delay/allpass_filter_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/core/delay/allpass_filter.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/allpass_filter.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/allpass_filter.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/core/delay/allpass_filter.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/core/delay/bbd_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/bbd_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/bbd_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/core/delay/bbd_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/core/delay/bbd.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/bbd.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/core/delay/bbd.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/core/delay/bbd.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
   "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/core/oscillator/lut_oscillator/lut_oscillator.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/core/oscillator/lut_oscillator/lut_oscillator.c",
   "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/core/oscillator/lut_oscillator/lut_oscillator.c",
   "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/core/oscillator/lut_oscillator/lut_oscillator.c.o"
@@ -850,6 +874,18 @@
   "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/chorus/chorus_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/chorus/chorus_f32.c",
   "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/chorus/chorus_f32.c",
   "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/chorus/chorus_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/delay/delay_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/delay/delay_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/delay/delay_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/delay/delay_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/analog_delay/analog_delay_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/analog_delay/analog_delay_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/analog_delay/analog_delay_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/analog_delay/analog_delay_f32.c.o"
 },
 {
   "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
@@ -889,9 +925,27 @@
 },
 {
   "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/phaser/ota_phaser_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/phaser/ota_phaser_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/phaser/ota_phaser_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/phaser/ota_phaser_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/phaser/jfet_phaser_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/phaser/jfet_phaser_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/phaser/jfet_phaser_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/phaser/jfet_phaser_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
   "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/reverb/reverb_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/reverb/reverb_f32.c",
   "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/reverb/reverb_f32.c",
   "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/reverb/reverb_f32.c.o"
+},
+{
+  "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
+  "command": "/usr/bin/gcc -I/home/guthman/source/Audio-Effects/third_party/NuDSP -I/home/guthman/source/Audio-Effects/third_party/NuDSP/include -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core -I/home/guthman/source/Audio-Effects/third_party/NuDSP/core/filters -I/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions -g -fPIC -o NuDSP/CMakeFiles/nudsp.dir/extensions/camel/reverb/freeverb_f32.c.o -c /home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/reverb/freeverb_f32.c",
+  "file": "/home/guthman/source/Audio-Effects/third_party/NuDSP/extensions/camel/reverb/freeverb_f32.c",
+  "output": "/home/guthman/source/Audio-Effects/Distortion/build/NuDSP/CMakeFiles/nudsp.dir/extensions/camel/reverb/freeverb_f32.c.o"
 },
 {
   "directory": "/home/guthman/source/Audio-Effects/Distortion/build",
