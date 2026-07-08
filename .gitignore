@@ -1,6 +1,7 @@
 # .gitignore
 # 构建目录
 build/
+build-svf/
 build-asan/
 bin/
 DerivedData/
