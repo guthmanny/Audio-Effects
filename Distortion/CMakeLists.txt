@@ -135,6 +135,8 @@ target_sources(Distortion PRIVATE
     Source/DistortionHeaderComponent.h
     Source/DistortionFooterComponent.cpp
     Source/DistortionFooterComponent.h
+    Source/DistortionStartupProgressOverlay.cpp
+    Source/DistortionStartupProgressOverlay.h
     Source/PluginParameter.h
     ${ATOM_COLLECTIONS_APP_DIR}/AudioSettingsPanel.cpp
     ${ATOM_COLLECTIONS_APP_DIR}/AudioSettingsPanel.h
@@ -152,6 +154,7 @@ target_compile_definitions(Distortion
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_JACK=1
+        JUCE_MODAL_LOOPS_PERMITTED=1
     PRIVATE
         JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
 )

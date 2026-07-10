@@ -4,19 +4,6 @@
     Code by Juan Gil <http://juangil.com/>.
     Copyright (C) 2017 Juan Gil.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
   ==============================================================================
 */
 
@@ -25,13 +12,43 @@
 
 //==============================================================================
 
+int CompressorExpanderAudioProcessorEditor::computeTotalHeight() const
+{
+    int height = 2 * editorMargin + curveHeight + editorPadding;
+
+    for (int i = 0; i < components.size(); ++i)
+    {
+        if (dynamic_cast<Slider*> (components[i]))
+            height += sliderHeight;
+        else if (dynamic_cast<ToggleButton*> (components[i]))
+            height += buttonHeight;
+        else if (dynamic_cast<ComboBox*> (components[i]))
+            height += comboBoxHeight;
+
+        height += editorPadding;
+    }
+
+    return height;
+}
+
+void CompressorExpanderAudioProcessorEditor::applyEditorSize()
+{
+    totalEditorHeight = computeTotalHeight();
+    setSize (editorWidth, totalEditorHeight);
+    setResizeLimits (editorWidth, totalEditorHeight, editorWidth, totalEditorHeight);
+    resized();
+}
+
 CompressorExpanderAudioProcessorEditor::CompressorExpanderAudioProcessorEditor (CompressorExpanderAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    const OwnedArray<AudioProcessorParameter>& parameters = processor.getParameters();
+    juce::LookAndFeel::setDefaultLookAndFeel (&atomLookAndFeel);
+
+    addAndMakeVisible (transferCurve);
+
+    const Array<AudioProcessorParameter*>& parameters = processor.getParameters();
     int comboBoxCounter = 0;
 
-    int editorHeight = 2 * editorMargin;
     for (int i = 0; i < parameters.size(); ++i) {
         if (const AudioProcessorParameterWithID* parameter =
                 dynamic_cast<AudioProcessorParameterWithID*> (parameters[i])) {
@@ -50,7 +67,6 @@ CompressorExpanderAudioProcessorEditor::CompressorExpanderAudioProcessorEditor (
                     new SliderAttachment (processor.parameters.valueTreeState, parameter->paramID, *aSlider));
 
                 components.add (aSlider);
-                editorHeight += sliderHeight;
             }
 
             //======================================
@@ -65,7 +81,6 @@ CompressorExpanderAudioProcessorEditor::CompressorExpanderAudioProcessorEditor (
                     new ButtonAttachment (processor.parameters.valueTreeState, parameter->paramID, *aButton));
 
                 components.add (aButton);
-                editorHeight += buttonHeight;
             }
 
             //======================================
@@ -82,7 +97,6 @@ CompressorExpanderAudioProcessorEditor::CompressorExpanderAudioProcessorEditor (
                     new ComboBoxAttachment (processor.parameters.valueTreeState, parameter->paramID, *aComboBox));
 
                 components.add (aComboBox);
-                editorHeight += comboBoxHeight;
             }
 
             //======================================
@@ -98,14 +112,66 @@ CompressorExpanderAudioProcessorEditor::CompressorExpanderAudioProcessorEditor (
         }
     }
 
-    //======================================
+    applyEditorSize();
 
-    editorHeight += components.size() * editorPadding;
-    setSize (editorWidth, editorHeight);
+    // Standalone attaches the editor after construction; re-apply size once on the message thread
+    // so the outer window picks up curveHeight changes instead of stretching a stale bounds.
+    juce::MessageManager::callAsync ([this]
+    {
+        applyEditorSize();
+    });
+
+    updateTransferCurve();
+    startTimerHz (60);
 }
 
 CompressorExpanderAudioProcessorEditor::~CompressorExpanderAudioProcessorEditor()
 {
+    stopTimer();
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+//==============================================================================
+
+//==============================================================================
+
+float CompressorExpanderAudioProcessorEditor::readParameterValue (const String& paramId, float fallback) const
+{
+    if (auto* param = processor.parameters.valueTreeState.getParameter (paramId))
+        return param->convertFrom0to1 (param->getValue());
+
+    if (auto* value = processor.parameters.valueTreeState.getRawParameterValue (paramId))
+        return value->load();
+
+    return fallback;
+}
+
+void CompressorExpanderAudioProcessorEditor::updateTransferCurve()
+{
+    const float thresholdDb = readParameterValue (processor.paramThreshold.paramID, processor.paramThreshold.defaultValue);
+    const float ratio = readParameterValue (processor.paramRatio.paramID, processor.paramRatio.defaultValue);
+    const float makeupDb = readParameterValue (processor.paramMakeupGain.paramID, processor.paramMakeupGain.defaultValue);
+    const bool expanderMode = readParameterValue (processor.paramMode.paramID, 1.0f) >= 0.5f;
+    const bool softKnee = readParameterValue (processor.paramKnee.paramID, 0.0f) >= 0.5f;
+    const float kneeWidthDb = readParameterValue (processor.paramKneeWidth.paramID, processor.paramKneeWidth.defaultValue);
+
+    transferCurve.setParameters (thresholdDb, ratio, makeupDb, expanderMode, softKnee, kneeWidthDb);
+}
+
+void CompressorExpanderAudioProcessorEditor::timerCallback()
+{
+    const float attackSec = readParameterValue (processor.paramAttack.paramID, processor.paramAttack.defaultValue) * 0.001f;
+    const float releaseSec = readParameterValue (processor.paramRelease.paramID, processor.paramRelease.defaultValue) * 0.001f;
+    transferCurve.setDynamicMeter (processor.getMeterInputDb(),
+                                   processor.getMeterGainReductionDb(),
+                                   attackSec,
+                                   releaseSec);
+
+    if (++paramUpdateCounter >= 6)
+    {
+        paramUpdateCounter = 0;
+        updateTransferCurve();
+    }
 }
 
 //==============================================================================
@@ -117,20 +183,25 @@ void CompressorExpanderAudioProcessorEditor::paint (Graphics& g)
 
 void CompressorExpanderAudioProcessorEditor::resized()
 {
-    Rectangle<int> r = getLocalBounds().reduced (editorMargin);
-    r = r.removeFromRight (r.getWidth() - labelWidth);
+    auto bounds = getLocalBounds().reduced (editorMargin);
+
+    transferCurve.setBounds (bounds.removeFromTop (curveHeight));
+    bounds.removeFromTop (editorPadding);
+
+    auto controlArea = bounds;
+    controlArea = controlArea.removeFromRight (controlArea.getWidth() - labelWidth);
 
     for (int i = 0; i < components.size(); ++i) {
-        if (Slider* aSlider = dynamic_cast<Slider*> (components[i]))
-            components[i]->setBounds (r.removeFromTop (sliderHeight));
+        if (dynamic_cast<Slider*> (components[i]))
+            components[i]->setBounds (controlArea.removeFromTop (sliderHeight));
 
-        if (ToggleButton* aButton = dynamic_cast<ToggleButton*> (components[i]))
-            components[i]->setBounds (r.removeFromTop (buttonHeight));
+        if (dynamic_cast<ToggleButton*> (components[i]))
+            components[i]->setBounds (controlArea.removeFromTop (buttonHeight));
 
-        if (ComboBox* aComboBox = dynamic_cast<ComboBox*> (components[i]))
-            components[i]->setBounds (r.removeFromTop (comboBoxHeight));
+        if (dynamic_cast<ComboBox*> (components[i]))
+            components[i]->setBounds (controlArea.removeFromTop (comboBoxHeight));
 
-        r = r.removeFromBottom (r.getHeight() - editorPadding);
+        controlArea.removeFromTop (editorPadding);
     }
 }
 

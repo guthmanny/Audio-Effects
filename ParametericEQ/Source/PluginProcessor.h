@@ -134,14 +134,10 @@ class ParametricEQAudioProcessor : public AudioProcessor
   std::array<SvfChain, maxChannels> svfChains{};
   std::array<BandStateChain, maxChannels> svfStates{};
   std::array<int, numBands> lastBandTypeIndices{};
-  std::array<float, numBands> lastBandFreqHz{};
-  std::array<float, numBands> lastBandQ{};
-  std::array<float, numBands> lastBandGainDb{};
 
   double currentSampleRate = 44100.0;
   int preparedBlockSize = 0;
   static constexpr int maxOversampleFactor = 4;
-  bool lastBypassState = false;
 
   std::array<AudioSampleBuffer, maxChannels> oversampleBuffers{};
   std::array<nx_upsampler_t*, maxChannels> upSamplers{};

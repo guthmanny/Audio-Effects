@@ -4,61 +4,65 @@
     Code by Juan Gil <http://juangil.com/>.
     Copyright (C) 2017 Juan Gil.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
   ==============================================================================
 */
 
 #pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include <juce_atom_theme/juce_atom_theme.h>
+
+#include "CompressorCurveComponent.h"
 #include "PluginProcessor.h"
 
 //==============================================================================
 
-class CompressorExpanderAudioProcessorEditor : public AudioProcessorEditor
+class CompressorExpanderAudioProcessorEditor final : public AudioProcessorEditor,
+                                                     private juce::Timer
 {
 public:
     //==============================================================================
 
     CompressorExpanderAudioProcessorEditor (CompressorExpanderAudioProcessor&);
-    ~CompressorExpanderAudioProcessorEditor();
+    ~CompressorExpanderAudioProcessorEditor() override;
 
     //==============================================================================
 
     void paint (Graphics&) override;
     void resized() override;
 
+    /** Adjust curveHeight here — must rebuild after changing. */
+    static constexpr int curveHeight = 520;
+
 private:
     //==============================================================================
 
+    void timerCallback() override;
+    void updateTransferCurve();
+    float readParameterValue (const String& paramId, float fallback) const;
+    int computeTotalHeight() const;
+    void applyEditorSize();
+
     CompressorExpanderAudioProcessor& processor;
 
-    enum {
-        editorWidth = 500,
-        editorMargin = 10,
-        editorPadding = 10,
+    static constexpr int editorWidth = 520;
+    static constexpr int editorMargin = 10;
+    static constexpr int editorPadding = 10;
 
-        sliderTextEntryBoxWidth = 100,
-        sliderTextEntryBoxHeight = 25,
-        sliderHeight = 25,
-        buttonHeight = 25,
-        comboBoxHeight = 25,
-        labelWidth = 100,
-    };
+    static constexpr int sliderTextEntryBoxWidth = 100;
+    static constexpr int sliderTextEntryBoxHeight = 25;
+    static constexpr int sliderHeight = 25;
+    static constexpr int buttonHeight = 25;
+    static constexpr int comboBoxHeight = 25;
+    static constexpr int labelWidth = 100;
+
+    int totalEditorHeight = 0;
+    int paramUpdateCounter = 0;
 
     //======================================
+
+    AtomLookAndFeel atomLookAndFeel { atom::ThemeType::Dark };
+    CompressorCurveComponent transferCurve;
 
     OwnedArray<Slider> sliders;
     OwnedArray<ToggleButton> toggles;

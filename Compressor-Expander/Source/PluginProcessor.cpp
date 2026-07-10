@@ -1,51 +1,39 @@
 /*
   ==============================================================================
 
-    This code is based on the contents of the book: "Audio Effects: Theory,
-    Implementation and Application" by Joshua D. Reiss and Andrew P. McPherson.
-
-    Code by Juan Gil <http://juangil.com/>.
-    Copyright (C) 2017 Juan Gil.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+    Compressor / Expander plugin — DSP via NuDSP camel.
 
   ==============================================================================
 */
 
 #include "PluginProcessor.h"
+
 #include "PluginEditor.h"
 #include "PluginParameter.h"
 
+#include <cmath>
+
 //==============================================================================
 
-CompressorExpanderAudioProcessor::CompressorExpanderAudioProcessor():
+CompressorExpanderAudioProcessor::CompressorExpanderAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-    AudioProcessor (BusesProperties()
+    : AudioProcessor (BusesProperties()
                     #if ! JucePlugin_IsMidiEffect
                      #if ! JucePlugin_IsSynth
                       .withInput  ("Input",  AudioChannelSet::stereo(), true)
                      #endif
                       .withOutput ("Output", AudioChannelSet::stereo(), true)
                     #endif
-                   ),
+                       )
 #endif
-    parameters (*this)
+    , parameters (*this)
     , paramMode (parameters, "Mode", {"Compressor / Limiter", "Expander / Noise gate"}, 1)
+    , paramKnee (parameters, "Knee", {"Hard", "Soft"}, 0)
+    , paramKneeWidth (parameters, "Knee width", "dB", 1.0f, 24.0f, CompressorKnee::defaultWidthDb)
     , paramThreshold (parameters, "Threshold", "dB", -60.0f, 0.0f, -24.0f)
     , paramRatio (parameters, "Ratio", ":1", 1.0f, 100.0f, 50.0f)
-    , paramAttack (parameters, "Attack", "ms", 0.1f, 100.0f, 2.0f, [](float value){ return value * 0.001f; })
-    , paramRelease (parameters, "Release", "ms", 10.0f, 1000.0f, 300.0f, [](float value){ return value * 0.001f; })
+    , paramAttack (parameters, "Attack", "ms", 0.1f, 100.0f, 2.0f, [](float value) { return value * 0.001f; })
+    , paramRelease (parameters, "Release", "ms", 10.0f, 1000.0f, 300.0f, [](float value) { return value * 0.001f; })
     , paramMakeupGain (parameters, "Makeup gain", "dB", -12.0f, 12.0f, 0.0f)
     , paramBypass (parameters, "Bypass")
 {
@@ -58,25 +46,309 @@ CompressorExpanderAudioProcessor::~CompressorExpanderAudioProcessor()
 
 //==============================================================================
 
+float CompressorExpanderAudioProcessor::readParameterValue (const String& paramId, float fallback) const
+{
+    if (auto* param = parameters.valueTreeState.getParameter (paramId))
+        return param->convertFrom0to1 (param->getValue());
+
+    if (auto* value = parameters.valueTreeState.getRawParameterValue (paramId))
+        return value->load();
+
+    return fallback;
+}
+
+void CompressorExpanderAudioProcessor::syncParametersFromValueTree()
+{
+    paramThreshold.setCurrentAndTargetValue (readParameterValue (paramThreshold.paramID, paramThreshold.defaultValue));
+    paramKneeWidth.setCurrentAndTargetValue (readParameterValue (paramKneeWidth.paramID, paramKneeWidth.defaultValue));
+    paramRatio.setCurrentAndTargetValue (readParameterValue (paramRatio.paramID, paramRatio.defaultValue));
+    paramAttack.setCurrentAndTargetValue (readParameterValue (paramAttack.paramID, paramAttack.defaultValue * 0.001f));
+    paramRelease.setCurrentAndTargetValue (readParameterValue (paramRelease.paramID, paramRelease.defaultValue * 0.001f));
+    paramMakeupGain.setCurrentAndTargetValue (readParameterValue (paramMakeupGain.paramID, paramMakeupGain.defaultValue));
+    paramBypass.setCurrentAndTargetValue (readParameterValue (paramBypass.paramID, (float) paramBypass.defaultState));
+}
+
+void CompressorExpanderAudioProcessor::ensureEffectInstances()
+{
+    if (compressor == nullptr)
+        compressor = std::make_unique<nudsp::camel::CompressorF32>();
+
+    if (noiseGate == nullptr)
+        noiseGate = std::make_unique<nudsp::camel::NoiseGateF32>();
+}
+
+void CompressorExpanderAudioProcessor::updateEffectParameters()
+{
+    const double thresholdDb = (double) readParameterValue (paramThreshold.paramID, paramThreshold.defaultValue);
+    const double ratio = (double) readParameterValue (paramRatio.paramID, paramRatio.defaultValue);
+    const double attackMs = (double) readParameterValue (paramAttack.paramID, paramAttack.defaultValue);
+    const double releaseMs = (double) readParameterValue (paramRelease.paramID, paramRelease.defaultValue);
+    const bool bypass = readParameterValue (paramBypass.paramID, (float) paramBypass.defaultState) >= 0.5f;
+
+    if (compressor != nullptr)
+    {
+        nx_compressor_set_threshold_f32 (compressor->getRawPointer(), thresholdDb);
+        nx_compressor_set_ratio_f32 (compressor->getRawPointer(), jlimit (0.0, 1.0, 1.0 / ratio));
+        nx_compressor_set_attack_ms_f32 (compressor->getRawPointer(), attackMs);
+        nx_compressor_set_release_ms_f32 (compressor->getRawPointer(), releaseMs);
+        nx_compressor_set_gain_f32 (compressor->getRawPointer(), 0.0);
+        compressor->setBypass (bypass);
+    }
+
+    if (noiseGate != nullptr)
+    {
+        nx_noise_gate_config_t config;
+        nudsp::camel::NoiseGateF32::configInit (&config);
+        config.thresh.control_params.value = std::pow (10.0, thresholdDb / 20.0);
+        config.ratio.control_params.value = jlimit (1.0, 10.0, ratio);
+        config.attack_ms.control_params.value = jlimit (5.0, 100.0, attackMs);
+        config.release_ms.control_params.value = jlimit (100.0, 10000.0, releaseMs);
+        noiseGate->setConfig (config);
+    }
+}
+
+void CompressorExpanderAudioProcessor::mixSidechain (const AudioSampleBuffer& buffer,
+                                                     int numInputChannels,
+                                                     int numSamples)
+{
+    sidechainBuffer.clear();
+
+    if (numInputChannels <= 0)
+        return;
+
+    const float scale = 1.0f / (float) numInputChannels;
+
+    for (int channel = 0; channel < numInputChannels; ++channel)
+        sidechainBuffer.addFrom (0, 0, buffer, channel, 0, numSamples, scale);
+}
+
+void CompressorExpanderAudioProcessor::processCompressorMode (AudioSampleBuffer& buffer,
+                                                              int numInputChannels,
+                                                              int numSamples,
+                                                              float makeupGain,
+                                                              bool softKnee)
+{
+    if (softKnee)
+    {
+        processSoftKneeMode (buffer,
+                             numInputChannels,
+                             numSamples,
+                             readParameterValue (paramMakeupGain.paramID, paramMakeupGain.defaultValue),
+                             false);
+        return;
+    }
+
+    const float* sidechain = sidechainBuffer.getReadPointer (0);
+    float* wet = monoWetBuffer.getWritePointer (0);
+
+    compressor->process (sidechain, sidechain, wet, (size_t) numSamples);
+
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        const float dry = sidechain[sample];
+        const float gain = (std::abs (dry) > 1.0e-8f) ? (wet[sample] / dry) * makeupGain : makeupGain;
+
+        for (int channel = 0; channel < numInputChannels; ++channel)
+            buffer.setSample (channel, sample, buffer.getSample (channel, sample) * gain);
+    }
+}
+
+void CompressorExpanderAudioProcessor::processExpanderMode (AudioSampleBuffer& buffer,
+                                                            int numInputChannels,
+                                                            int numSamples,
+                                                            float makeupGain,
+                                                            bool softKnee)
+{
+    if (softKnee)
+    {
+        processSoftKneeMode (buffer,
+                             numInputChannels,
+                             numSamples,
+                             readParameterValue (paramMakeupGain.paramID, paramMakeupGain.defaultValue),
+                             true);
+        return;
+    }
+
+    const float* sidechain = sidechainBuffer.getReadPointer (0);
+
+    for (int channel = 0; channel < numInputChannels; ++channel)
+    {
+        const float* input = buffer.getReadPointer (channel);
+        float* output = buffer.getWritePointer (channel);
+
+        noiseGate->process (input,
+                            sidechain,
+                            output,
+                            &gateEnvelopeState[(size_t) channel],
+                            1,
+                            (size_t) numSamples);
+    }
+
+    if (makeupGain != 1.0f)
+        for (int channel = 0; channel < numInputChannels; ++channel)
+            buffer.applyGain (channel, 0, numSamples, makeupGain);
+}
+
+float CompressorExpanderAudioProcessor::calculateAttackOrRelease (float timeSeconds) const
+{
+    if (timeSeconds <= 0.0f || currentSampleRate <= 0.0)
+        return 0.0f;
+
+    return (float) std::exp (-1.0 / (timeSeconds * currentSampleRate));
+}
+
+void CompressorExpanderAudioProcessor::processSoftKneeMode (AudioSampleBuffer& buffer,
+                                                            int numInputChannels,
+                                                            int numSamples,
+                                                            float makeupGainDb,
+                                                            bool expanderMode)
+{
+    const float* sidechain = sidechainBuffer.getReadPointer (0);
+    const float thresholdDb = readParameterValue (paramThreshold.paramID, paramThreshold.defaultValue);
+    const float ratio = readParameterValue (paramRatio.paramID, paramRatio.defaultValue);
+    const float kneeWidthDb = readParameterValue (paramKneeWidth.paramID, paramKneeWidth.defaultValue);
+    const float attackSec = paramAttack.getCurrentValue();
+    const float releaseSec = paramRelease.getCurrentValue();
+    const float alphaA = calculateAttackOrRelease (attackSec);
+    const float alphaR = calculateAttackOrRelease (releaseSec);
+
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        const float inputSquared = sidechain[sample] * sidechain[sample];
+        float inputDb = -60.0f;
+
+        if (expanderMode)
+        {
+            constexpr float averageFactor = 0.9999f;
+            expanderLevel = averageFactor * expanderLevel + (1.0f - averageFactor) * inputSquared;
+
+            if (expanderLevel > 1.0e-6f)
+                inputDb = 10.0f * std::log10 (expanderLevel);
+        }
+        else if (inputSquared > 1.0e-6f)
+        {
+            inputDb = 10.0f * std::log10 (inputSquared);
+        }
+
+        const float outputDb = CompressorKnee::computeOutputDb (inputDb,
+                                                                thresholdDb,
+                                                                ratio,
+                                                                0.0f,
+                                                                expanderMode,
+                                                                true,
+                                                                kneeWidthDb);
+        const float gainReductionDb = inputDb - outputDb;
+
+        if (expanderMode)
+        {
+            if (gainReductionDb < envelopeDb)
+                envelopeDb = alphaA * envelopeDb + (1.0f - alphaA) * gainReductionDb;
+            else
+                envelopeDb = alphaR * envelopeDb + (1.0f - alphaR) * gainReductionDb;
+        }
+        else
+        {
+            if (gainReductionDb > envelopeDb)
+                envelopeDb = alphaA * envelopeDb + (1.0f - alphaA) * gainReductionDb;
+            else
+                envelopeDb = alphaR * envelopeDb + (1.0f - alphaR) * gainReductionDb;
+        }
+
+        const float control = std::pow (10.0f, (makeupGainDb - envelopeDb) * 0.05f);
+
+        for (int channel = 0; channel < numInputChannels; ++channel)
+        {
+            const float input = buffer.getSample (channel, sample);
+            buffer.setSample (channel, sample, input * control);
+        }
+    }
+}
+
+void CompressorExpanderAudioProcessor::updateTransferMeters (const AudioSampleBuffer& buffer,
+                                                               int numInputChannels,
+                                                               int numSamples,
+                                                               bool expanderMode,
+                                                               bool softKnee)
+{
+    if (numSamples <= 0 || currentSampleRate <= 0.0)
+        return;
+
+    const float* sidechain = sidechainBuffer.getReadPointer (0);
+    double inputSumSquares = 0.0;
+    float outputPeak = 0.0f;
+
+    for (int i = 0; i < numSamples; ++i)
+        inputSumSquares += (double) sidechain[i] * (double) sidechain[i];
+
+    for (int channel = 0; channel < numInputChannels; ++channel)
+    {
+        const float* channelData = buffer.getReadPointer (channel);
+        for (int i = 0; i < numSamples; ++i)
+            outputPeak = jmax (outputPeak, std::abs (channelData[i]));
+    }
+
+    const float inputRms = (float) std::sqrt (inputSumSquares / (double) numSamples);
+    const float blockInputDb = inputRms > 1.0e-8f ? Decibels::gainToDecibels (inputRms) : -80.0f;
+    float blockGainReductionDb = 0.0f;
+
+    if (softKnee)
+    {
+        blockGainReductionDb = jmax (0.0f, envelopeDb);
+    }
+    else if (expanderMode)
+    {
+        const float outputDb = outputPeak > 1.0e-8f ? Decibels::gainToDecibels (outputPeak) : -80.0f;
+        blockGainReductionDb = jmax (0.0f, blockInputDb - outputDb);
+    }
+    else if (compressor != nullptr)
+    {
+        blockGainReductionDb = jmax (0.0f, -compressor->getGainReductionDb());
+    }
+
+    meterSmoothedInputDb = blockInputDb;
+    meterSmoothedGainReductionDb = blockGainReductionDb;
+
+    meterInputDb.store (meterSmoothedInputDb, std::memory_order_relaxed);
+    meterGainReductionDb.store (meterSmoothedGainReductionDb, std::memory_order_relaxed);
+}
+
+//==============================================================================
+
 void CompressorExpanderAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    currentSampleRate = sampleRate;
+    envelopeDb = 0.0f;
+    expanderLevel = 0.0f;
+    meterSmoothedInputDb = -80.0f;
+    meterSmoothedGainReductionDb = 0.0f;
+    meterInputDb.store (-80.0f, std::memory_order_relaxed);
+    meterGainReductionDb.store (0.0f, std::memory_order_relaxed);
+
     const double smoothTime = 1e-3;
     paramThreshold.reset (sampleRate, smoothTime);
+    paramKneeWidth.reset (sampleRate, smoothTime);
     paramRatio.reset (sampleRate, smoothTime);
     paramAttack.reset (sampleRate, smoothTime);
     paramRelease.reset (sampleRate, smoothTime);
     paramMakeupGain.reset (sampleRate, smoothTime);
     paramBypass.reset (sampleRate, smoothTime);
 
-    //======================================
+    syncParametersFromValueTree();
+    ensureEffectInstances();
 
-    mixedDownInput.setSize (1, samplesPerBlock);
+    sidechainBuffer.setSize (1, samplesPerBlock);
+    monoWetBuffer.setSize (1, samplesPerBlock);
+    gateEnvelopeState = {};
 
-    inputLevel = 0.0f;
-    ylPrev = 0.0f;
+    compressor->prepare (sampleRate);
+    compressor->reset (0.0f, 0.0f, nullptr);
+    compressor->tick (1);
 
-    inverseSampleRate = 1.0f / (float)getSampleRate();
-    inverseE = 1.0f / M_E;
+    noiseGate->prepare (sampleRate);
+    noiseGate->reset (gateEnvelopeState.data(), gateEnvelopeState.size());
+    noiseGate->tick (1);
+
+    updateEffectParameters();
 }
 
 void CompressorExpanderAudioProcessor::releaseResources()
@@ -85,79 +357,64 @@ void CompressorExpanderAudioProcessor::releaseResources()
 
 void CompressorExpanderAudioProcessor::processBlock (AudioSampleBuffer& buffer, MidiBuffer& midiMessages)
 {
+    ignoreUnused (midiMessages);
     ScopedNoDenormals noDenormals;
 
     const int numInputChannels = getTotalNumInputChannels();
     const int numOutputChannels = getTotalNumOutputChannels();
     const int numSamples = buffer.getNumSamples();
 
-    //======================================
-
-    if ((bool)paramBypass.getTargetValue())
+    if (numSamples <= 0)
         return;
 
-    //======================================
+    if ((bool) paramBypass.getTargetValue())
+    {
+        meterSmoothedInputDb = -80.0f;
+        meterSmoothedGainReductionDb = 0.0f;
+        meterInputDb.store (-80.0f, std::memory_order_relaxed);
+        meterGainReductionDb.store (0.0f, std::memory_order_relaxed);
 
-    mixedDownInput.clear();
-    for (int channel = 0; channel < numInputChannels; ++channel)
-        mixedDownInput.addFrom (0, 0, buffer, channel, 0, numSamples, 1.0f / numInputChannels);
+        for (int channel = numInputChannels; channel < numOutputChannels; ++channel)
+            buffer.clear (channel, 0, numSamples);
 
-    for (int sample = 0; sample < numSamples; ++sample) {
-        bool expander = (bool)paramMode.getTargetValue();
-        float T = paramThreshold.getNextValue();
-        float R = paramRatio.getNextValue();
-        float alphaA = calculateAttackOrRelease (paramAttack.getNextValue());
-        float alphaR = calculateAttackOrRelease (paramRelease.getNextValue());
-        float makeupGain = paramMakeupGain.getNextValue();
-
-        float inputSquared = powf (mixedDownInput.getSample (0, sample), 2.0f);
-        if (expander) {
-            const float averageFactor = 0.9999f;
-            inputLevel = averageFactor * inputLevel + (1.0f - averageFactor) * inputSquared;
-        } else {
-            inputLevel = inputSquared;
-        }
-        xg = (inputLevel <= 1e-6f) ? -60.0f : 10.0f * log10f (inputLevel);
-
-        // Expander
-        if (expander) {
-            if (xg > T)
-                yg = xg;
-            else
-                yg = T + (xg - T) * R;
-
-            xl = xg - yg;
-
-            if (xl < ylPrev)
-                yl = alphaA * ylPrev + (1.0f - alphaA) * xl;
-            else
-                yl = alphaR * ylPrev + (1.0f - alphaR) * xl;
-
-        // Compressor
-        } else {
-            if (xg < T)
-                yg = xg;
-            else
-                yg = T + (xg - T) / R;
-
-            xl = xg - yg;
-
-            if (xl > ylPrev)
-                yl = alphaA * ylPrev + (1.0f - alphaA) * xl;
-            else
-                yl = alphaR * ylPrev + (1.0f - alphaR) * xl;
-        }
-
-        control = powf (10.0f, (makeupGain - yl) * 0.05f);
-        ylPrev = yl;
-
-        for (int channel = 0; channel < numInputChannels; ++channel) {
-            float newValue = buffer.getSample (channel, sample) * control;
-            buffer.setSample (channel, sample, newValue);
-        }
+        return;
     }
 
-    //======================================
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        (void) paramThreshold.getNextValue();
+        (void) paramKneeWidth.getNextValue();
+        (void) paramRatio.getNextValue();
+        (void) paramAttack.getNextValue();
+        (void) paramRelease.getNextValue();
+        (void) paramMakeupGain.getNextValue();
+    }
+
+    updateEffectParameters();
+
+    const bool expanderMode = readParameterValue (paramMode.paramID, 1.0f) >= 0.5f;
+    const bool softKnee = readParameterValue (paramKnee.paramID, 0.0f) >= 0.5f;
+    const float makeupGain = Decibels::decibelsToGain (readParameterValue (paramMakeupGain.paramID,
+                                                                             paramMakeupGain.defaultValue));
+
+    mixSidechain (buffer, numInputChannels, numSamples);
+
+    if (expanderMode)
+    {
+        processExpanderMode (buffer, numInputChannels, numSamples, makeupGain, softKnee);
+
+        if (! softKnee)
+            noiseGate->tick ((size_t) numSamples);
+    }
+    else
+    {
+        processCompressorMode (buffer, numInputChannels, numSamples, makeupGain, softKnee);
+
+        if (! softKnee)
+            compressor->tick ((size_t) numSamples);
+    }
+
+    updateTransferMeters (buffer, numInputChannels, numSamples, expanderMode, softKnee);
 
     for (int channel = numInputChannels; channel < numOutputChannels; ++channel)
         buffer.clear (channel, 0, numSamples);
@@ -165,33 +422,15 @@ void CompressorExpanderAudioProcessor::processBlock (AudioSampleBuffer& buffer, 
 
 //==============================================================================
 
-float CompressorExpanderAudioProcessor::calculateAttackOrRelease (float value)
-{
-    if (value == 0.0f)
-        return 0.0f;
-    else
-        return pow (inverseE, inverseSampleRate / value);
-}
-
-//==============================================================================
-
-
-
-
-
-
-//==============================================================================
-
 void CompressorExpanderAudioProcessor::getStateInformation (MemoryBlock& destData)
 {
-    ScopedPointer<XmlElement> xml (parameters.valueTreeState.state.createXml());
-    copyXmlToBinary (*xml, destData);
+    if (auto xml = parameters.valueTreeState.state.createXml())
+        copyXmlToBinary (*xml, destData);
 }
 
 void CompressorExpanderAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    ScopedPointer<XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState != nullptr)
+    if (auto xmlState = getXmlFromBinary (data, sizeInBytes))
         if (xmlState->hasTagName (parameters.valueTreeState.state.getType()))
             parameters.valueTreeState.state = ValueTree::fromXml (*xmlState);
 }
@@ -200,7 +439,7 @@ void CompressorExpanderAudioProcessor::setStateInformation (const void* data, in
 
 bool CompressorExpanderAudioProcessor::hasEditor() const
 {
-    return true; // (change this to false if you choose to not supply an editor)
+    return true;
 }
 
 AudioProcessorEditor* CompressorExpanderAudioProcessor::createEditor()
@@ -217,13 +456,10 @@ bool CompressorExpanderAudioProcessor::isBusesLayoutSupported (const BusesLayout
     ignoreUnused (layouts);
     return true;
   #else
-    // This is the place where you check if the layout is supported.
-    // In this template code we only support mono or stereo.
     if (layouts.getMainOutputChannelSet() != AudioChannelSet::mono()
      && layouts.getMainOutputChannelSet() != AudioChannelSet::stereo())
         return false;
 
-    // This checks if the input layout matches the output layout
    #if ! JucePlugin_IsSynth
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
@@ -275,8 +511,7 @@ double CompressorExpanderAudioProcessor::getTailLengthSeconds() const
 
 int CompressorExpanderAudioProcessor::getNumPrograms()
 {
-    return 1;   // NB: some hosts don't cope very well if you tell them there are 0 programs,
-                // so this should be at least 1, even if you're not really implementing programs.
+    return 1;
 }
 
 int CompressorExpanderAudioProcessor::getCurrentProgram()
@@ -286,23 +521,23 @@ int CompressorExpanderAudioProcessor::getCurrentProgram()
 
 void CompressorExpanderAudioProcessor::setCurrentProgram (int index)
 {
+    ignoreUnused (index);
 }
 
 const String CompressorExpanderAudioProcessor::getProgramName (int index)
 {
+    ignoreUnused (index);
     return {};
 }
 
 void CompressorExpanderAudioProcessor::changeProgramName (int index, const String& newName)
 {
+    ignoreUnused (index, newName);
 }
 
 //==============================================================================
 
-// This creates new instances of the plugin..
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new CompressorExpanderAudioProcessor();
 }
-
-//==============================================================================

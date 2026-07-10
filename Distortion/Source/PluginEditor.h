@@ -5,6 +5,7 @@
 
 #include "DistortionFooterComponent.h"
 #include "DistortionHeaderComponent.h"
+#include "DistortionStartupProgressOverlay.h"
 #include "PluginProcessor.h"
 
 class DistortionBodyContent final : public juce::Component
@@ -37,7 +38,46 @@ public:
     void updateModelUI();
 
 private:
+    class StartupOverlay final : public juce::Component
+    {
+    public:
+        StartupOverlay()
+        {
+            addAndMakeVisible (content);
+            setInterceptsMouseClicks (true, true);
+        }
+
+        void setProgress (float progress, const juce::String& statusMessage)
+        {
+            content.setProgress (progress, statusMessage);
+            content.repaint();
+            repaint();
+        }
+
+        void parentHierarchyChanged() override
+        {
+            resized();
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (juce::Colour (0xcc000000));
+        }
+
+        void resized() override
+        {
+            auto bounds = getLocalBounds();
+            content.setBounds (bounds.withSizeKeepingCentre (DistortionStartupProgressOverlay::preferredWidth,
+                                                             DistortionStartupProgressOverlay::preferredHeight));
+        }
+
+    private:
+        DistortionStartupProgressOverlay content;
+    };
+
     void timerCallback() override;
+    void startModelPreload();
+    void finishModelPreload();
 #if JucePlugin_Build_Standalone
     void darkModeSettingChanged() override;
     void applyAudioSettingsDialogTitleBarTheme();
@@ -50,6 +90,7 @@ private:
     int getBodyContentHeight() const noexcept;
 
     DistortionAudioProcessor& processor;
+    bool modelPreloadActive = false;
 
     static constexpr int headerBaseHeight = 80;
     static constexpr int footerBaseHeight = 32;
@@ -64,6 +105,7 @@ private:
     float savedValueReserveDlu = 0.0f;
 
     AtomLookAndFeel atomLookAndFeel { atom::ThemeType::Dark };
+    StartupOverlay startupOverlay;
     DistortionHeaderComponent headerBar;
     DistortionFooterComponent footerBar;
     DistortionBodyContent bodyContent;

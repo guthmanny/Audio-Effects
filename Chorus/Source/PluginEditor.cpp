@@ -94,6 +94,20 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
 #endif
   };
 
+  headerBar.getBtnTuner().onClick = [this]
+  {
+    setTunerVisible (! tunerOverlay.isVisible());
+  };
+
+  tunerOverlay.getContent().onCloseRequested = [this] { setTunerVisible (false); };
+  tunerOverlay.getContent().onPeriodicityThresholdChanged = [this] (float threshold)
+  {
+    processor.setTunerPeriodicityThreshold (threshold);
+  };
+  tunerOverlay.getContent().setPeriodicityThreshold (processor.getTunerPeriodicityThreshold());
+  addChildComponent (tunerOverlay);
+  tunerOverlay.setAlwaysOnTop (true);
+
   headerBar.getTapTempo().onBPMChanged = [this](double bpm)
   {
     // 根据当前模型，Tap Tempo 同步到对应的 Rate 参数
@@ -300,10 +314,26 @@ void ChorusAudioProcessorEditor::applyZoom(float newZoom)
   resized();
 }
 
+void ChorusAudioProcessorEditor::setTunerVisible (bool shouldShow)
+{
+  processor.setTunerEnabled (shouldShow);
+  tunerOverlay.setVisible (shouldShow);
+
+  if (shouldShow)
+  {
+    tunerOverlay.setBounds (getLocalBounds());
+    tunerOverlay.toFront (false);
+    tunerOverlay.getContent().clearPitch();
+  }
+}
+
 void ChorusAudioProcessorEditor::timerCallback()
 {
   headerBar.setMeterLevels(processor.getMeterLevelMono(), processor.getMeterLevelLeft(),
                            processor.getMeterLevelRight());
+
+  if (tunerOverlay.isVisible())
+    tunerOverlay.getContent().setPitchResult (processor.getTunerResult());
 }
 
 void ChorusAudioProcessorEditor::paint(juce::Graphics& g)
@@ -320,6 +350,9 @@ void ChorusAudioProcessorEditor::resized()
   headerBar.setBounds(bounds.removeFromTop(headerH));
   footerBar.setBounds(bounds.removeFromBottom(footerH));
   bodyViewport.setBounds(bounds);
+
+  if (tunerOverlay.isVisible())
+    tunerOverlay.setBounds(getLocalBounds());
 
   bodyContent.setSize(juce::jmax(getWidth(), getEditorWidth()), juce::jmax(getBodyContentHeight(), bounds.getHeight()));
 

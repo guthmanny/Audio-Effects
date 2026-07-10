@@ -35,6 +35,9 @@ ChorusHeaderComponent::ChorusHeaderComponent()
     btnSettings.setTooltip ("Settings");
     addAndMakeVisible (btnSettings);
 
+    btnTuner.setTooltip ("Tuner");
+    addAndMakeVisible (btnTuner);
+
     atom::TapCircle::TapConfig tapConfig;
     tapConfig.initialBpm = 30.0;
     tapConfig.minTapBpm = 1.0;
@@ -149,6 +152,7 @@ void ChorusHeaderComponent::resized()
         makeItem ((float) inW, (float) inH, sliderInput, 6, 6),
         makeItem ((float) gateW, (float) gateH, sliderGate, 6, 6),
         makeItem ((float) cogSize, (float) cogSize, btnSettings, 6, 6),
+        makeItem ((float) cogSize, (float) cogSize, btnTuner, 6, 6),
         makeItem ((float) tapWidth, (float) tapSize, tapTempo, 6, 6),
         spacer,
         makeItem ((float) outW, (float) outH, sliderOutput, 6, 6),
@@ -174,6 +178,6 @@ int ChorusHeaderComponent::getMinimumContentWidth (int heightHint)
     const int gateW = sliderGate.getRequiredWidth (knobSize);
     const int outW = sliderOutput.getRequiredWidth (knobSize);
 
-    const int content = meterW + 16 + inW + 12 + gateW + 12 + cogSize + 12 + tapWidth + 12 + outW + 12 + meterW * 2 + 16;
+    const int content = meterW + 16 + inW + 12 + gateW + 12 + cogSize + 12 + cogSize + 12 + tapWidth + 12 + outW + 12 + meterW * 2 + 16;
     return content + margin * 2;
 }

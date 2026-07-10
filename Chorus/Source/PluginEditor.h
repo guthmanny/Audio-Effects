@@ -6,6 +6,7 @@
 #include "ChorusFooterComponent.h"
 #include "ChorusHeaderComponent.h"
 #include "PluginProcessor.h"
+#include "TunerOverlayComponent.h"
 
 class ChorusBodyContent final : public juce::Component
 {
@@ -35,6 +36,7 @@ public:
 #endif
 
     void updateModelUI();
+    void setTunerVisible (bool shouldShow);
 
 private:
     void timerCallback() override;
@@ -68,6 +70,7 @@ private:
     ChorusFooterComponent footerBar;
     ChorusBodyContent bodyContent;
     juce::Viewport bodyViewport;
+    TunerOverlay tunerOverlay;
 
     // Chorus model slider pointers
     atom::Slider* chorusRateSlider = nullptr;

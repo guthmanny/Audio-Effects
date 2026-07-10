@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include "QPitchDetector.h"
 #include "PluginParameter.h"
 #include "nudsp/extensions/camel/chorus.hpp"
 #include "nudsp/extensions/camel/phase90.hpp"
@@ -103,6 +104,13 @@ class ChorusAudioProcessor : public AudioProcessor
   EffectModel getEffectModel() const noexcept { return currentModel.load(); }
   void setEffectModel(EffectModel model) noexcept { currentModel.store(model); }
 
+  void setTunerEnabled(bool shouldEnable) noexcept;
+  bool isTunerEnabled() const noexcept { return tunerEnabled.load(); }
+  QPitchDetector::Result getTunerResult() const noexcept;
+
+  void setTunerPeriodicityThreshold(float threshold) noexcept;
+  float getTunerPeriodicityThreshold() const noexcept { return tunerPeriodicityThreshold.load(); }
+
  private:
   //==============================================================================
 
@@ -136,6 +144,12 @@ class ChorusAudioProcessor : public AudioProcessor
   std::atomic<float> meterLeft{0.0f};
   std::atomic<float> meterRight{0.0f};
   std::atomic<EffectModel> currentModel{kChorus};
+
+  std::atomic<bool> tunerEnabled{false};
+  std::atomic<float> tunerPeriodicityThreshold{0.7f};
+  QPitchDetector pitchDetector;
+  mutable juce::SpinLock tunerLock;
+  QPitchDetector::Result tunerResult{};
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ChorusAudioProcessor)
 };

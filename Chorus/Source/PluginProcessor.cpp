@@ -51,6 +51,30 @@ ChorusAudioProcessor::ChorusAudioProcessor()
 
 ChorusAudioProcessor::~ChorusAudioProcessor() {}
 
+void ChorusAudioProcessor::setTunerEnabled(bool shouldEnable) noexcept
+{
+  const bool wasEnabled = tunerEnabled.exchange(shouldEnable);
+  if (shouldEnable && !wasEnabled)
+  {
+    pitchDetector.reset();
+    const juce::SpinLock::ScopedLockType lock(tunerLock);
+    tunerResult = {};
+  }
+}
+
+QPitchDetector::Result ChorusAudioProcessor::getTunerResult() const noexcept
+{
+  const juce::SpinLock::ScopedLockType lock(tunerLock);
+  return tunerResult;
+}
+
+void ChorusAudioProcessor::setTunerPeriodicityThreshold(float threshold) noexcept
+{
+  const float clamped = juce::jlimit(0.0f, 1.0f, threshold);
+  tunerPeriodicityThreshold.store(clamped);
+  pitchDetector.setPeriodicityThreshold(clamped);
+}
+
 //==============================================================================
 
 //==============================================================================
@@ -186,6 +210,13 @@ void ChorusAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   syncParametersFromValueTree();
   ensureEffectInstances();
 
+  pitchDetector.prepare(sampleRate, 50.0f, 500.0f);
+  pitchDetector.setPeriodicityThreshold(tunerPeriodicityThreshold.load());
+  {
+    const juce::SpinLock::ScopedLockType lock(tunerLock);
+    tunerResult = {};
+  }
+
   // Prepare Chorus
   chorus->prepare(sampleRate);
   chorus->reset();
@@ -298,6 +329,32 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
 
   processInputGain(buffer, numInputChannels, numSamples, inputGainDb);
   processGate(buffer, jmin(numInputChannels, numOutputChannels), numSamples, gateThresholdDb);
+
+  if (tunerEnabled.load())
+  {
+    // Feed gated mono input into BCF pitch detector.
+    if (numInputChannels >= 2)
+    {
+      const float* left = buffer.getReadPointer(0);
+      const float* right = buffer.getReadPointer(1);
+      for (int i = 0; i < numSamples; ++i)
+        monoBuffer.setSample(0, i, 0.5f * (left[i] + right[i]));
+    }
+    else if (numInputChannels == 1)
+    {
+      monoBuffer.copyFrom(0, 0, buffer, 0, 0, numSamples);
+    }
+
+    if (numInputChannels > 0)
+    {
+      const bool updated = pitchDetector.process(monoBuffer.getReadPointer(0), numSamples);
+      if (updated)
+      {
+        const juce::SpinLock::ScopedLockType lock(tunerLock);
+        tunerResult = pitchDetector.getResult();
+      }
+    }
+  }
 
   const auto frameSize = (size_t)numSamples;
   const int procChannels = jmin(numInputChannels, numOutputChannels, maxChannels);

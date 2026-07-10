@@ -1,35 +1,23 @@
 /*
   ==============================================================================
 
-    This code is based on the contents of the book: "Audio Effects: Theory,
-    Implementation and Application" by Joshua D. Reiss and Andrew P. McPherson.
-
-    Code by Juan Gil <http://juangil.com/>.
-    Copyright (C) 2017 Juan Gil.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+    Compressor / Expander plugin — DSP via NuDSP camel.
 
   ==============================================================================
 */
 
 #pragma once
 
-#define _USE_MATH_DEFINES
-#include <cmath>
+#include <array>
+#include <atomic>
+#include <memory>
 
 #include "../JuceLibraryCode/JuceHeader.h"
 #include "PluginParameter.h"
+#include "CompressorKnee.h"
+#include "nudsp/extensions/camel/compressor.hpp"
+#include "nudsp/extensions/camel/compressor_f32.h"
+#include "nudsp/extensions/camel/noise_gate.hpp"
 
 //==============================================================================
 
@@ -39,20 +27,13 @@ public:
     //==============================================================================
 
     CompressorExpanderAudioProcessor();
-    ~CompressorExpanderAudioProcessor();
+    ~CompressorExpanderAudioProcessor() override;
 
     //==============================================================================
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock (AudioSampleBuffer&, MidiBuffer&) override;
-
-    //==============================================================================
-
-
-
-
-
 
     //==============================================================================
 
@@ -89,32 +70,11 @@ public:
 
     //==============================================================================
 
-
-
-
-
-
-    //==============================================================================
-
-    AudioSampleBuffer mixedDownInput;
-    float xl;
-    float yl;
-    float xg;
-    float yg;
-    float control;
-
-    float inputLevel;
-    float ylPrev;
-
-    float inverseSampleRate;
-    float inverseE;
-    float calculateAttackOrRelease (float value);
-
-    //======================================
-
     PluginParametersManager parameters;
 
     PluginParameterComboBox paramMode;
+    PluginParameterComboBox paramKnee;
+    PluginParameterLinSlider paramKneeWidth;
     PluginParameterLinSlider paramThreshold;
     PluginParameterLinSlider paramRatio;
     PluginParameterLinSlider paramAttack;
@@ -122,8 +82,46 @@ public:
     PluginParameterLinSlider paramMakeupGain;
     PluginParameterToggle paramBypass;
 
+    float getMeterInputDb() const noexcept { return meterInputDb.load (std::memory_order_relaxed); }
+    float getMeterGainReductionDb() const noexcept { return meterGainReductionDb.load (std::memory_order_relaxed); }
+
 private:
     //==============================================================================
+
+    float readParameterValue (const String& paramId, float fallback) const;
+    void syncParametersFromValueTree();
+    void ensureEffectInstances();
+    void updateEffectParameters();
+    void mixSidechain (const AudioSampleBuffer& buffer, int numInputChannels, int numSamples);
+    void processCompressorMode (AudioSampleBuffer& buffer, int numInputChannels, int numSamples, float makeupGain, bool softKnee);
+    void processExpanderMode (AudioSampleBuffer& buffer, int numInputChannels, int numSamples, float makeupGain, bool softKnee);
+    void processSoftKneeMode (AudioSampleBuffer& buffer,
+                              int numInputChannels,
+                              int numSamples,
+                              float makeupGainDb,
+                              bool expanderMode);
+    float calculateAttackOrRelease (float timeSeconds) const;
+    void updateTransferMeters (const AudioSampleBuffer& buffer,
+                               int numInputChannels,
+                               int numSamples,
+                               bool expanderMode,
+                               bool softKnee);
+
+    std::unique_ptr<nudsp::camel::CompressorF32> compressor;
+    std::unique_ptr<nudsp::camel::NoiseGateF32> noiseGate;
+
+    AudioSampleBuffer sidechainBuffer;
+    AudioSampleBuffer monoWetBuffer;
+    std::array<float, 2> gateEnvelopeState {};
+
+    double currentSampleRate = 44100.0;
+    float envelopeDb = 0.0f;
+    float expanderLevel = 0.0f;
+    float meterSmoothedInputDb = -80.0f;
+    float meterSmoothedGainReductionDb = 0.0f;
+
+    std::atomic<float> meterInputDb { -80.0f };
+    std::atomic<float> meterGainReductionDb { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CompressorExpanderAudioProcessor)
 };

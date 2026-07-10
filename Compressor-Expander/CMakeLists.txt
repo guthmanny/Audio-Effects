@@ -1,9 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
-project(Chorus VERSION 1.0 LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
+project(CompressorExpander VERSION 1.0 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
 
-# Steinberg ASIO SDK (Windows only). Download from Steinberg developer site and set
-# ASIO_SDK_PATH to the SDK root (the folder that contains common/iasiodrv.h).
 if(WIN32)
     set(ASIO_SDK_PATH "" CACHE PATH "Path to Steinberg ASIO SDK root")
 
@@ -16,17 +14,15 @@ if(WIN32)
     endif()
 
     if(ASIO_SDK_PATH AND EXISTS "${ASIO_SDK_PATH}/common/iasiodrv.h")
-        set(CHORUS_ASIO_SDK_INCLUDE "${ASIO_SDK_PATH}/common")
+        set(COMPRESSOR_EXPANDER_ASIO_SDK_INCLUDE "${ASIO_SDK_PATH}/common")
         message(STATUS "ASIO SDK: ${ASIO_SDK_PATH}")
     else()
         message(WARNING
             "JUCE_ASIO will be enabled but ASIO SDK was not found. "
-            "Set ASIO_SDK_PATH (or env ASIO_SDK_PATH) to the SDK root, e.g. "
-            "-DASIO_SDK_PATH=\"C:/asiosdk\"")
+            "Set ASIO_SDK_PATH (or env ASIO_SDK_PATH) to the SDK root.")
     endif()
 endif()
 
-# JUCE discovery: Windows builds from source; Linux prefers /usr/local install.
 if(WIN32)
     set(JUCE_PATH "${CMAKE_SOURCE_DIR}/../JUCE" CACHE PATH "Path to JUCE source")
     if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
@@ -64,67 +60,48 @@ set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_SOURCE_DIR}/../third_party/NuDSP"
                "${CMAKE_BINARY_DIR}/NuDSP")
 
-juce_add_plugin(Chorus
+juce_add_plugin(CompressorExpander
     PLUGIN_MANUFACTURER_CODE Juce
-    PLUGIN_CODE Chrs
+    PLUGIN_CODE CmEx
     FORMATS Standalone
-    PRODUCT_NAME "Chorus"
+    PRODUCT_NAME "Compressor-Expander"
 )
 
-juce_generate_juce_header(Chorus)
+juce_generate_juce_header(CompressorExpander)
 
-set(ATOM_COLLECTIONS_APP_DIR "${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/demos/collections_app")
-
-target_sources(Chorus PRIVATE
+target_sources(CompressorExpander PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
-    Source/ChorusHeaderComponent.cpp
-    Source/ChorusHeaderComponent.h
-    Source/ChorusFooterComponent.cpp
-    Source/ChorusFooterComponent.h
-    Source/TunerOverlayComponent.cpp
-    Source/TunerOverlayComponent.h
-    Source/QPitchDetector.h
+    Source/CompressorCurveComponent.cpp
+    Source/CompressorCurveComponent.h
+    Source/CompressorKnee.h
     Source/PluginParameter.h
-    Source/StandaloneMain.cpp
-    ${ATOM_COLLECTIONS_APP_DIR}/AudioSettingsPanel.cpp
-    ${ATOM_COLLECTIONS_APP_DIR}/AudioSettingsPanel.h
 )
 
-target_include_directories(Chorus PRIVATE
-    "${ATOM_COLLECTIONS_APP_DIR}"
-    /home/guthman/source/q/q_lib/include
-    /home/guthman/source/q/infra/include
-)
-
-target_compile_features(Chorus PRIVATE cxx_std_20)
-
-target_compile_definitions(Chorus
+target_compile_definitions(CompressorExpander
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_JACK=1
-    PRIVATE
-        JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
 )
 
 if(WIN32)
-    target_compile_definitions(Chorus PRIVATE JUCE_ASIO=1)
+    target_compile_definitions(CompressorExpander PRIVATE JUCE_ASIO=1)
 
-    if(CHORUS_ASIO_SDK_INCLUDE)
-        target_include_directories(Chorus PRIVATE "${CHORUS_ASIO_SDK_INCLUDE}")
+    if(COMPRESSOR_EXPANDER_ASIO_SDK_INCLUDE)
+        target_include_directories(CompressorExpander PRIVATE "${COMPRESSOR_EXPANDER_ASIO_SDK_INCLUDE}")
     endif()
 endif()
 
-target_compile_options(Chorus PRIVATE
+target_compile_options(CompressorExpander PRIVATE
     -Wno-switch-enum
     -Wno-overloaded-virtual
 )
 
-target_link_libraries(Chorus PRIVATE
+target_link_libraries(CompressorExpander PRIVATE
     juce::juce_audio_utils
     juce::juce_audio_devices
     juce::juce_atom_theme
@@ -134,6 +111,3 @@ target_link_libraries(Chorus PRIVATE
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
 )
-
-
-

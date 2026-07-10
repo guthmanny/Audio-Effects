@@ -32,7 +32,6 @@ private:
     void darkModeSettingChanged() override;
     void applyAudioSettingsDialogTitleBarTheme();
 #endif
-    bool refreshEQCurveIfNeeded();
     void applyZoom (float newZoom);
     int getHeaderHeight() const noexcept;
     int getFooterHeight() const noexcept;
@@ -66,13 +65,6 @@ private:
 
     juce::OwnedArray<SliderAttachment> sliderAttachments;
     juce::OwnedArray<ButtonAttachment> buttonAttachments;
-
-    bool eqCurveCacheValid = false;
-    double lastCurveSampleRate = 0.0;
-    std::array<float, ParametricEQAudioProcessor::numBands> lastCurveFreqHz {};
-    std::array<float, ParametricEQAudioProcessor::numBands> lastCurveQ {};
-    std::array<float, ParametricEQAudioProcessor::numBands> lastCurveGainDb {};
-    std::array<int, ParametricEQAudioProcessor::numBands> lastCurveType {};
 
 #if JucePlugin_Build_Standalone
     juce::Component::SafePointer<juce::Component> audioSettingsDialog;

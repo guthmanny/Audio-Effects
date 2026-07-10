@@ -62,6 +62,22 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
     addAndMakeVisible (headerBar);
     addAndMakeVisible (footerBar);
     addAndMakeVisible (bodyViewport);
+    addAndMakeVisible (startupOverlay);
+    startupOverlay.setAlwaysOnTop (true);
+    startupOverlay.setVisible (processor.isModelPreloadPending());
+    startupOverlay.setProgress (0.0f, "Loading Distortion...");
+
+    processor.setStartupProgressCallback ([safeThis = juce::Component::SafePointer<DistortionAudioProcessorEditor> (this)]
+                                          (float progress, const juce::String& statusMessage)
+    {
+        if (safeThis == nullptr)
+            return;
+
+        safeThis->startupOverlay.setVisible (true);
+        safeThis->startupOverlay.toFront (false);
+        safeThis->startupOverlay.setProgress (progress, statusMessage);
+    });
+
     bodyViewport.setViewedComponent (&bodyContent, false);
     bodyViewport.setScrollBarsShown (true, false);
     bodyViewport.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, juce::Colours::grey);
@@ -236,6 +252,16 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
     updateModelUI();
     startTimerHz (30);
 
+    if (processor.isModelPreloadPending())
+    {
+        juce::Component::SafePointer<DistortionAudioProcessorEditor> safeThis (this);
+        juce::Timer::callAfterDelay (50, [safeThis]()
+        {
+            if (safeThis != nullptr)
+                safeThis->startModelPreload();
+        });
+    }
+
 #if JucePlugin_Build_Standalone
     juce::Desktop::getInstance().addDarkModeSettingListener (this);
 #endif
@@ -243,6 +269,7 @@ DistortionAudioProcessorEditor::DistortionAudioProcessorEditor (DistortionAudioP
 
 DistortionAudioProcessorEditor::~DistortionAudioProcessorEditor()
 {
+    processor.setStartupProgressCallback (nullptr);
     stopTimer();
 
 #if JucePlugin_Build_Standalone
@@ -296,8 +323,35 @@ void DistortionAudioProcessorEditor::applyZoom (float newZoom)
     resized();
 }
 
+void DistortionAudioProcessorEditor::startModelPreload()
+{
+    if (! processor.isModelPreloadPending() || modelPreloadActive)
+        return;
+
+    modelPreloadActive = true;
+    startupOverlay.setVisible (true);
+    startupOverlay.toFront (false);
+    startupOverlay.setProgress (0.0f, "Initializing distortion engines...");
+    startTimerHz (20);
+}
+
+void DistortionAudioProcessorEditor::finishModelPreload()
+{
+    modelPreloadActive = false;
+    startupOverlay.setVisible (false);
+    startTimerHz (30);
+}
+
 void DistortionAudioProcessorEditor::timerCallback()
 {
+    if (modelPreloadActive)
+    {
+        const bool moreWork = processor.advanceModelPreloadStep();
+        if (! moreWork)
+            finishModelPreload();
+        return;
+    }
+
     headerBar.setMeterLevels (processor.getMeterLevelMono(),
                               processor.getMeterLevelLeft(),
                               processor.getMeterLevelRight());
@@ -318,6 +372,10 @@ void DistortionAudioProcessorEditor::resized()
     headerBar.setBounds (bounds.removeFromTop (headerH));
     footerBar.setBounds (bounds.removeFromBottom (footerH));
     bodyViewport.setBounds (bounds);
+
+    startupOverlay.setBounds (getLocalBounds());
+    if (startupOverlay.isVisible())
+        startupOverlay.toFront (false);
 
     bodyContent.setSize (juce::jmax (getWidth(), getEditorWidth()),
                          juce::jmax (getBodyContentHeight(), bounds.getHeight()));

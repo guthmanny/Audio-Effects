@@ -118,6 +118,7 @@ ParametricEQAudioProcessorEditor::ParametricEQAudioProcessorEditor(ParametricEQA
 
   updateEQCurve();
   applyZoom(1.0f);
+  startTimerHz(30);
 
 #if JucePlugin_Build_Standalone
   juce::Desktop::getInstance().addDarkModeSettingListener(this);
@@ -168,52 +169,10 @@ int ParametricEQAudioProcessorEditor::getFooterHeight() const noexcept
 
 void ParametricEQAudioProcessorEditor::timerCallback()
 {
-}
+  headerBar.setMeterLevels(processor.getMeterLevelMono(), processor.getMeterLevelLeft(),
+                           processor.getMeterLevelRight());
 
-bool ParametricEQAudioProcessorEditor::refreshEQCurveIfNeeded()
-{
-  const auto currentSampleRate = processor.getEffectiveSampleRate();
-  auto& vts = processor.parameters.valueTreeState;
-
-  auto getVal = [&](const String& pid, float def)
-  {
-    if (auto* v = vts.getRawParameterValue(pid)) return v->load();
-    if (auto* p = vts.getParameter(pid)) return p->convertFrom0to1(p->getValue());
-    return def;
-  };
-
-  bool changed = !eqCurveCacheValid || std::abs(currentSampleRate - lastCurveSampleRate) > 1.0e-6;
-
-  for (int b = 0; b < ParametricEQAudioProcessor::numBands; ++b)
-  {
-    const auto& band = *processor.bands[(size_t)b];
-    const float freq = getVal(band.frequency.paramID, band.frequency.defaultValue);
-    const float q = getVal(band.q.paramID, band.q.defaultValue);
-    const float gain = getVal(band.gain.paramID, band.gain.defaultValue);
-    const int type = (int)juce::jlimit(0, 5, (int)getVal(band.type.paramID, (float)band.type.defaultChoice));
-
-    if (!eqCurveCacheValid ||
-        std::abs(freq - lastCurveFreqHz[(size_t)b]) > 1.0e-6f ||
-        std::abs(q - lastCurveQ[(size_t)b]) > 1.0e-6f ||
-        std::abs(gain - lastCurveGainDb[(size_t)b]) > 1.0e-6f ||
-        type != lastCurveType[(size_t)b])
-    {
-      changed = true;
-    }
-
-    lastCurveFreqHz[(size_t)b] = freq;
-    lastCurveQ[(size_t)b] = q;
-    lastCurveGainDb[(size_t)b] = gain;
-    lastCurveType[(size_t)b] = type;
-  }
-
-  if (!changed)
-    return false;
-
-  lastCurveSampleRate = currentSampleRate;
-  eqCurveCacheValid = true;
   updateEQCurve();
-  return true;
 }
 
 void ParametricEQAudioProcessorEditor::updateEQCurve()

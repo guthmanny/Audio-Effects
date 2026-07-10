@@ -9,8 +9,6 @@
 #include "PluginProcessor.h"
 
 #include <cmath>
-#include <limits>
-
 #include "PluginEditor.h"
 #include "PluginParameter.h"
 
@@ -103,21 +101,21 @@ static nx_svf_config_t makeSvfBandConfig(double freqHz, double q, double gainDb,
   config.cutoff.control_params.taper = NX_CONTROL_LINEAR;
   config.cutoff.control_params.control = linearValueToControl(freqHz, kFreqMin, kFreqMax);
   config.cutoff.control_params.value = juce::jlimit(kFreqMin, kFreqMax, freqHz);
-  config.cutoff.smoother_params.time_ms = kBandParamSmoothSec * 1000.0;
+  config.cutoff.smoother_params.time_ms = 0.0;
 
   config.Q.control_params.min_value = kQMin;
   config.Q.control_params.max_value = kQMax;
   config.Q.control_params.taper = NX_CONTROL_LINEAR;
   config.Q.control_params.control = linearValueToControl(q, kQMin, kQMax);
   config.Q.control_params.value = juce::jlimit(kQMin, kQMax, q);
-  config.Q.smoother_params.time_ms = kBandParamSmoothSec * 1000.0;
+  config.Q.smoother_params.time_ms = 0.0;
 
   config.gain_db.control_params.min_value = kGainMin;
   config.gain_db.control_params.max_value = kGainMax;
   config.gain_db.control_params.taper = NX_CONTROL_LINEAR;
   config.gain_db.control_params.control = linearValueToControl(gainDb, kGainMin, kGainMax);
   config.gain_db.control_params.value = juce::jlimit(kGainMin, kGainMax, gainDb);
-  config.gain_db.smoother_params.time_ms = kBandParamSmoothSec * 1000.0;
+  config.gain_db.smoother_params.time_ms = 0.0;
 
   config.output = comboIndexToSvfOutput(typeIdx);
   return config;
@@ -149,10 +147,6 @@ ParametricEQAudioProcessor::ParametricEQAudioProcessor()
     bands[(size_t)i] = std::make_unique<BandParams>(parameters, i, typeNames);
 
   lastBandTypeIndices.fill(-1);
-  lastBandFreqHz.fill(-1.0f);
-  lastBandQ.fill(-1.0f);
-  lastBandGainDb.fill(std::numeric_limits<float>::quiet_NaN());
-  lastBypassState = false;
   resetAllSvfs();
 }
 
@@ -230,9 +224,9 @@ void ParametricEQAudioProcessor::prepareSvfInstances(double sampleRate)
 
 float ParametricEQAudioProcessor::readParameterValue(const String& paramId, float fallback) const
 {
-  if (auto* value = parameters.valueTreeState.getRawParameterValue(paramId)) return value->load();
-
   if (auto* param = parameters.valueTreeState.getParameter(paramId)) return param->convertFrom0to1(param->getValue());
+
+  if (auto* value = parameters.valueTreeState.getRawParameterValue(paramId)) return value->load();
 
   return fallback;
 }
@@ -303,10 +297,6 @@ void ParametricEQAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
 {
   currentSampleRate = sampleRate;
   lastBandTypeIndices.fill(-1);
-  lastBandFreqHz.fill(-1.0f);
-  lastBandQ.fill(-1.0f);
-  lastBandGainDb.fill(std::numeric_limits<float>::quiet_NaN());
-  lastBypassState = false;
 
   const int osFactor = oversampleFactor.load();
   preparedBlockSize = jmax(1, samplesPerBlock);
@@ -347,18 +337,6 @@ void ParametricEQAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
   }
 
   syncParametersFromValueTree();
-  for (int b = 0; b < numBands; ++b)
-  {
-    auto& band = *bands[(size_t)b];
-    const auto initialConfig = makeSvfBandConfig(readParameterValue(band.frequency.paramID, band.frequency.defaultValue),
-                                                 readParameterValue(band.q.paramID, band.q.defaultValue),
-                                                 readParameterValue(band.gain.paramID, band.gain.defaultValue),
-                                                 (int)jlimit(0, 5, (int)readParameterValue(band.type.paramID,
-                                                                                           (float)band.type.defaultChoice)));
-    for (int ch = 0; ch < maxChannels; ++ch)
-      if (auto* svf = svfChains[(size_t)ch][(size_t)b]; svf != nullptr)
-        nx_svf_set_config_f32(svf, &initialConfig);
-  }
   resetAllSvfs();
 }
 
@@ -390,15 +368,12 @@ void ParametricEQAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuf
   const size_t osNumSamples = (size_t)numSamples * (size_t)osFactor;
   const double osSampleRate = currentSampleRate * (double)osFactor;
 
-  if (bypass && !lastBypassState)
-    resetAllSvfs();
-  lastBypassState = bypass;
-
-  const float inputGainStart = Decibels::decibelsToGain(paramInputGain.getCurrentValue());
-  const float inputGainEnd = Decibels::decibelsToGain(advanceSmoothedValue(paramInputGain, numSamples));
-  if (std::abs(inputGainStart - 1.0f) > 1.0e-6f || std::abs(inputGainEnd - 1.0f) > 1.0e-6f)
+  for (int sample = 0; sample < numSamples; ++sample)
+  {
+    const float inputGain = Decibels::decibelsToGain(advanceSmoothedValue(paramInputGain, 1));
     for (int ch = 0; ch < numInputChannels; ++ch)
-      buffer.applyGainRamp(ch, 0, numSamples, inputGainStart, inputGainEnd);
+      buffer.setSample(ch, sample, buffer.getSample(ch, sample) * inputGain);
+  }
 
   if (!bypass)
   {
@@ -423,60 +398,53 @@ void ParametricEQAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuf
         juce::FloatVectorOperations::copy(osBuf, inData, numSamples);
     }
 
-    for (int b = 0; b < numBands; ++b)
+    for (int sample = 0; sample < numSamples; ++sample)
     {
-      auto& band = *bands[(size_t)b];
-      const float bandFreqHz =
-          clampBandFrequencyHz(readParameterValue(band.frequency.paramID, band.frequency.defaultValue), osSampleRate);
-      const float bandQ = clampBandQ(readParameterValue(band.q.paramID, band.q.defaultValue));
-      const float bandGainDb = clampBandGainDb(readParameterValue(band.gain.paramID, band.gain.defaultValue));
-      const int bandTypeIdx =
-          (int)jlimit(0, 5, (int)readParameterValue(band.type.paramID, (float)band.type.defaultChoice));
-
-      if (lastBandTypeIndices[(size_t)b] != bandTypeIdx)
+      for (int b = 0; b < numBands; ++b)
       {
-        lastBandTypeIndices[(size_t)b] = bandTypeIdx;
-        for (int resetCh = 0; resetCh < maxChannels; ++resetCh)
-          if (auto* svf = svfChains[(size_t)resetCh][(size_t)b]; svf != nullptr)
+        auto& band = *bands[(size_t)b];
+        const float bandFreqHz = clampBandFrequencyHz(advanceSmoothedValue(band.frequency, 1), osSampleRate);
+        const float bandQ = clampBandQ(advanceSmoothedValue(band.q, 1));
+        const float bandGainDb = clampBandGainDb(advanceSmoothedValue(band.gain, 1));
+        const int bandTypeIdx =
+            (int)jlimit(0, 5, (int)readParameterValue(band.type.paramID, (float)band.type.defaultChoice));
+
+        if (lastBandTypeIndices[(size_t)b] != bandTypeIdx)
+        {
+          lastBandTypeIndices[(size_t)b] = bandTypeIdx;
+          for (int resetCh = 0; resetCh < maxChannels; ++resetCh)
+            if (auto* svf = svfChains[(size_t)resetCh][(size_t)b]; svf != nullptr)
+            {
+              nx_svf_set_output_f32(svf, comboIndexToSvfOutput(bandTypeIdx));
+              nx_svf_reset_f32(svf, &svfStates[(size_t)resetCh][(size_t)b].lp, &svfStates[(size_t)resetCh][(size_t)b].bp, 1);
+            }
+        }
+
+        const auto config = makeSvfBandConfig(bandFreqHz, bandQ, bandGainDb, bandTypeIdx);
+        for (int ch = 0; ch < procChannels; ++ch)
+          if (auto* svf = svfChains[(size_t)ch][(size_t)b]; svf != nullptr)
           {
-            nx_svf_set_output_f32(svf, comboIndexToSvfOutput(bandTypeIdx));
-            nx_svf_reset_f32(svf, &svfStates[(size_t)resetCh][(size_t)b].lp, &svfStates[(size_t)resetCh][(size_t)b].bp, 1);
+            nx_svf_set_config_f32(svf, &config);
+            nx_svf_tick_f32(svf, (size_t)osFactor);
           }
       }
 
-      const bool freqChanged = std::abs(bandFreqHz - lastBandFreqHz[(size_t)b]) > 1.0e-6f;
-      const bool qChanged = std::abs(bandQ - lastBandQ[(size_t)b]) > 1.0e-6f;
-      const bool gainChanged =
-          !std::isfinite(lastBandGainDb[(size_t)b]) || std::abs(bandGainDb - lastBandGainDb[(size_t)b]) > 1.0e-6f;
-
-      for (int ch = 0; ch < procChannels; ++ch)
-        if (auto* svf = svfChains[(size_t)ch][(size_t)b]; svf != nullptr)
-        {
-          if (freqChanged)
-            nx_svf_set_cutoff_f32(svf, bandFreqHz);
-          if (qChanged)
-            nx_svf_set_Q_f32(svf, bandQ);
-          if (gainChanged)
-            nx_svf_set_gain_db_f32(svf, bandGainDb);
-          nx_svf_tick_f32(svf, osNumSamples);
-        }
-
+      const size_t osOffset = (size_t)sample * (size_t)osFactor;
       for (int ch = 0; ch < procChannels; ++ch)
       {
-        float* osBuf = oversampleBuffers[(size_t)ch].getWritePointer(0);
-        if (auto* svf = svfChains[(size_t)ch][(size_t)b]; svf != nullptr)
-          nx_svf_process_out_f32(svf,
-                                 osBuf,
-                                 osBuf,
-                                 &svfStates[(size_t)ch][(size_t)b].lp,
-                                 &svfStates[(size_t)ch][(size_t)b].bp,
-                                 1,
-                                 osNumSamples);
+        float* osChunk = oversampleBuffers[(size_t)ch].getWritePointer(0) + osOffset;
+        for (int b = 0; b < numBands; ++b)
+          if (auto* svf = svfChains[(size_t)ch][(size_t)b]; svf != nullptr)
+            nx_svf_process_f32(svf,
+                               osChunk,
+                               osChunk,
+                               nullptr,
+                               nullptr,
+                               &svfStates[(size_t)ch][(size_t)b].lp,
+                               &svfStates[(size_t)ch][(size_t)b].bp,
+                               1,
+                               (size_t)osFactor);
       }
-
-      lastBandFreqHz[(size_t)b] = bandFreqHz;
-      lastBandQ[(size_t)b] = bandQ;
-      lastBandGainDb[(size_t)b] = bandGainDb;
     }
 
     for (int ch = 0; ch < procChannels; ++ch)
@@ -487,25 +455,35 @@ void ParametricEQAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuf
       else
         juce::FloatVectorOperations::copy(buffer.getWritePointer(ch), osBuf, numSamples);
     }
-
   }
   else
   {
-    lastBandTypeIndices.fill(-1);
-    lastBandFreqHz.fill(-1.0f);
-    lastBandQ.fill(-1.0f);
-    lastBandGainDb.fill(std::numeric_limits<float>::quiet_NaN());
+    for (int b = 0; b < numBands; ++b)
+    {
+      auto& band = *bands[(size_t)b];
+      advanceSmoothedValue(band.frequency, numSamples);
+      advanceSmoothedValue(band.q, numSamples);
+      advanceSmoothedValue(band.gain, numSamples);
+    }
+
+    resetAllSvfs();
   }
 
-  const float outputGainStart = Decibels::decibelsToGain(paramOutputGain.getCurrentValue());
-  const float outputGainEnd = Decibels::decibelsToGain(advanceSmoothedValue(paramOutputGain, numSamples));
-  if (std::abs(outputGainStart - 1.0f) > 1.0e-6f || std::abs(outputGainEnd - 1.0f) > 1.0e-6f)
+  for (int sample = 0; sample < numSamples; ++sample)
+  {
+    const float outputGain = Decibels::decibelsToGain(advanceSmoothedValue(paramOutputGain, 1));
     for (int ch = 0; ch < numOutputChannels; ++ch)
-      buffer.applyGainRamp(ch, 0, numSamples, outputGainStart, outputGainEnd);
+      buffer.setSample(ch, sample, buffer.getSample(ch, sample) * outputGain);
+  }
 
-  meterMono.store(0.0f);
-  meterLeft.store(0.0f);
-  meterRight.store(0.0f);
+  float monoPeak = 0.0f, leftPeak = 0.0f, rightPeak = 0.0f;
+  if (numOutputChannels > 0) leftPeak = buffer.getMagnitude(0, 0, numSamples);
+  if (numOutputChannels > 1) rightPeak = buffer.getMagnitude(1, 0, numSamples);
+  monoPeak = numOutputChannels > 1 ? 0.5f * (leftPeak + rightPeak) : leftPeak;
+
+  meterMono.store(monoPeak);
+  meterLeft.store(leftPeak);
+  meterRight.store(rightPeak);
 }
 
 //==============================================================================
@@ -524,9 +502,6 @@ void ParametricEQAudioProcessor::setStateInformation(const void* data, int sizeI
       parameters.valueTreeState.state = ValueTree::fromXml(*xmlState);
 
   lastBandTypeIndices.fill(-1);
-  lastBandFreqHz.fill(-1.0f);
-  lastBandQ.fill(-1.0f);
-  lastBandGainDb.fill(std::numeric_limits<float>::quiet_NaN());
   syncParametersFromValueTree();
   resetAllSvfs();
 }

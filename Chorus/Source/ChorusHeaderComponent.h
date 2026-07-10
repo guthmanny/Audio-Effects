@@ -13,6 +13,7 @@ public:
     atom::Slider& getSliderGate() { return sliderGate; }
     atom::Slider& getSliderOutput() { return sliderOutput; }
     atom::ShapeButton& getBtnSettings() { return btnSettings; }
+    atom::ShapeButton& getBtnTuner() { return btnTuner; }
     atom::TapCircle& getTapTempo() { return tapTempo; }
     atom::MeterBar& getMeterLeft() { return meterLeft; }
     atom::MeterBar& getMeterRight() { return meterRight; }
@@ -32,6 +33,7 @@ private:
     atom::MeterBar meterLeft;
     atom::MeterBar meterRight;
     atom::ShapeButton btnSettings { "btnSettings", AtomIconLibrary::Icon::CogWheel };
+    atom::ShapeButton btnTuner { "btnTuner", AtomIconLibrary::Icon::PitchFork };
     atom::TapCircle tapTempo;
     atom::Slider sliderInput { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     atom::Slider sliderGate { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };

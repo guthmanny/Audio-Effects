@@ -30,6 +30,8 @@ ParametricEQHeaderComponent::ParametricEQHeaderComponent()
 
     btnSettings.setTooltip ("Settings");
     addAndMakeVisible (btnSettings);
+
+    startTimerHz (30);
 }
 
 ParametricEQHeaderComponent::~ParametricEQHeaderComponent()
@@ -68,6 +70,8 @@ void ParametricEQHeaderComponent::setMeterLevels (float left, float rightL, floa
 
 void ParametricEQHeaderComponent::timerCallback()
 {
+    meterLeft.setLevels ({ meterLeftLevel });
+    meterRight.setLevels ({ meterRightLLevel, meterRightRLevel });
 }
 
 void ParametricEQHeaderComponent::lookAndFeelChanged()

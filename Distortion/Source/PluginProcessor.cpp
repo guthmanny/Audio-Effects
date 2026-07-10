@@ -45,6 +45,58 @@ DistortionAudioProcessor::DistortionModel DistortionAudioProcessor::getDistortio
 void DistortionAudioProcessor::setDistortionModel (DistortionModel model) noexcept { currentModel.store (model); }
 float DistortionAudioProcessor::getCpuLoadPeak() noexcept { const float p = cpuLoadPeak.exchange (0.0f); return p; }
 
+void DistortionAudioProcessor::setStartupProgressCallback (StartupProgressCallback callback)
+{
+    startupProgressCallback = std::move (callback);
+}
+
+bool DistortionAudioProcessor::isStartupComplete() const noexcept
+{
+    return startupComplete.load();
+}
+
+bool DistortionAudioProcessor::isModelPreloadPending() const noexcept
+{
+    return modelPreloadPending.load();
+}
+
+String DistortionAudioProcessor::getModelDisplayName (DistortionModel model)
+{
+    switch (model)
+    {
+        case kTs9: return "TS9";
+        case kAcBooster: return "AC Booster";
+        case kDs1: return "DS-1";
+        case kRat: return "Rat";
+        case kKlon: return "Klon";
+        case kGuvnor: return "Guv'nor";
+        case kDistortionPlus:
+        default: return "Distortion+";
+    }
+}
+
+void DistortionAudioProcessor::reportStartupProgress (float progress, const String& statusMessage)
+{
+    if (startupProgressCallback)
+        startupProgressCallback (progress, statusMessage);
+}
+
+void DistortionAudioProcessor::markModelPrepared (DistortionModel model, int osFactor)
+{
+    modelPreparedOsFactor[(size_t) model] = osFactor;
+}
+
+void DistortionAudioProcessor::markAllModelsPrepared (int osFactor)
+{
+    for (auto& preparedOs : modelPreparedOsFactor)
+        preparedOs = osFactor;
+}
+
+bool DistortionAudioProcessor::isModelPreparedForOs (DistortionModel model, int osFactor) const
+{
+    return modelPreparedOsFactor[(size_t) model] == osFactor;
+}
+
 DistortionAudioProcessor::~DistortionAudioProcessor()
 {
     for (auto& us : upSamplers)
@@ -75,44 +127,102 @@ void DistortionAudioProcessor::syncParametersFromValueTree()
     paramBypass.setCurrentAndTargetValue (readParameterValue (paramBypass.paramID, (float) paramBypass.defaultState));
 }
 
+void DistortionAudioProcessor::ensureEffectInstancesForModel (DistortionModel model)
+{
+    const ScopedLock lock (dspInitLock);
+
+    switch (model)
+    {
+        case kDistortionPlus:
+        {
+            static const double c15TaperTable[33] =
+            {
+                0.00000, 0.33000, 0.38000, 0.42800, 0.47400, 0.51800, 0.56000,
+                0.60000, 0.63800, 0.67400, 0.70800, 0.74000, 0.77000, 0.79800,
+                0.82400, 0.84800, 0.87000, 0.89000, 0.90800, 0.92400, 0.93800,
+                0.95000, 0.96000, 0.96800, 0.97500, 0.98100, 0.98600, 0.99000,
+                0.99300, 0.99550, 0.99750, 0.99900, 1.00000
+            };
+
+            for (auto& dist : distortionPlusChains)
+            {
+                if (dist) continue;
+                auto d = std::make_unique<nudsp::white_box::DistortionPlusF32>();
+                if (auto* raw = d->getRawPointer())
+                {
+                    nx_distortion_plus_config_t config;
+                    if (nx_distortion_plus_get_config_f32 (raw, &config) == NX_SUCCESS)
+                    {
+                        config.opamp.distortion.pot_params.taper = NX_POT_TAPER_TABLE;
+                        config.opamp.distortion.pot_params.table = c15TaperTable;
+                        config.opamp.distortion.pot_params.table_size = 33;
+                        nx_distortion_plus_set_config_f32 (raw, &config);
+                    }
+                }
+                dist = std::move (d);
+            }
+            break;
+        }
+        case kTs9:
+            for (auto& ts : ts9Chains) if (!ts) ts = std::make_unique<nudsp::white_box::Ts9F32>();
+            break;
+        case kAcBooster:
+            for (auto& ac : acBoosterChains) if (!ac) ac = std::make_unique<nudsp::white_box::AcBoosterF32>();
+            break;
+        case kDs1:
+            for (auto& ds : ds1Chains) if (!ds) ds = std::make_unique<nudsp::white_box::Ds1F32>();
+            break;
+        case kRat:
+            for (auto& rt : ratChains) if (!rt) rt = std::make_unique<nudsp::white_box::RatF32>();
+            break;
+        case kKlon:
+            for (auto& kl : klonChains) if (!kl) kl = std::make_unique<nudsp::white_box::KlonF32>();
+            break;
+        case kGuvnor:
+            for (auto& gv : guvnorChains) if (!gv) gv = std::make_unique<nudsp::white_box::GuvnorF32>();
+            break;
+    }
+}
+
 void DistortionAudioProcessor::ensureEffectInstances()
 {
-    static const double c15TaperTable[33] =
-    {
-        0.00000, 0.33000, 0.38000, 0.42800, 0.47400, 0.51800, 0.56000,
-        0.60000, 0.63800, 0.67400, 0.70800, 0.74000, 0.77000, 0.79800,
-        0.82400, 0.84800, 0.87000, 0.89000, 0.90800, 0.92400, 0.93800,
-        0.95000, 0.96000, 0.96800, 0.97500, 0.98100, 0.98600, 0.99000,
-        0.99300, 0.99550, 0.99750, 0.99900, 1.00000
-    };
-
-    for (auto& dist : distortionPlusChains)
-    {
-        if (dist) continue;
-        auto d = std::make_unique<nudsp::white_box::DistortionPlusF32>();
-        if (auto* raw = d->getRawPointer())
-        {
-            nx_distortion_plus_config_t config;
-            if (nx_distortion_plus_get_config_f32 (raw, &config) == NX_SUCCESS)
-            {
-                config.opamp.distortion.pot_params.taper = NX_POT_TAPER_TABLE;
-                config.opamp.distortion.pot_params.table = c15TaperTable;
-                config.opamp.distortion.pot_params.table_size = 33;
-                nx_distortion_plus_set_config_f32 (raw, &config);
-            }
-        }
-        dist = std::move (d);
-    }
-    for (auto& ts : ts9Chains) if (!ts) ts = std::make_unique<nudsp::white_box::Ts9F32>();
-    for (auto& ac : acBoosterChains) if (!ac) ac = std::make_unique<nudsp::white_box::AcBoosterF32>();
-    for (auto& ds : ds1Chains) if (!ds) ds = std::make_unique<nudsp::white_box::Ds1F32>();
-    for (auto& rt : ratChains) if (!rt) rt = std::make_unique<nudsp::white_box::RatF32>();
-    for (auto& kl : klonChains) if (!kl) kl = std::make_unique<nudsp::white_box::KlonF32>();
-    for (auto& gv : guvnorChains) if (!gv) gv = std::make_unique<nudsp::white_box::GuvnorF32>();
+    ensureEffectInstancesForModel (currentModel.load());
     if (!outputGain) outputGain = std::make_unique<nudsp::GainF32>();
 }
 
-void DistortionAudioProcessor::updateEffectParameters()
+void DistortionAudioProcessor::prepareEffectChainsForModel (DistortionModel model, double sampleRate, int osFactor)
+{
+    const ScopedLock lock (dspInitLock);
+    const double osSampleRate = sampleRate * (double) osFactor;
+
+    auto prepareChains = [&osSampleRate] (auto& chains)
+    {
+        for (auto& chain : chains)
+            if (chain) { chain->prepare (osSampleRate); chain->reset(); chain->tick (1); }
+    };
+
+    switch (model)
+    {
+        case kTs9: prepareChains (ts9Chains); break;
+        case kAcBooster: prepareChains (acBoosterChains); break;
+        case kDs1: prepareChains (ds1Chains); break;
+        case kRat: prepareChains (ratChains); break;
+        case kKlon: prepareChains (klonChains); break;
+        case kGuvnor: prepareChains (guvnorChains); break;
+        case kDistortionPlus:
+        default: prepareChains (distortionPlusChains); break;
+    }
+
+    markModelPrepared (model, osFactor);
+}
+
+void DistortionAudioProcessor::prepareAllEffectChains (double sampleRate, int osFactor)
+{
+    for (int modelIndex = 0; modelIndex < numDistortionModels; ++modelIndex)
+        prepareEffectChainsForModel ((DistortionModel) modelIndex, sampleRate, osFactor);
+}
+
+void DistortionAudioProcessor::updateEffectParametersForModel (DistortionModel model)
 {
     const double distortion = jlimit (0.0, 1.0, (double) readParameterValue (paramDistortion.paramID, paramDistortion.defaultValue));
     const double tone = jlimit (0.0, 1.0, (double) readParameterValue (paramTone.paramID, paramTone.defaultValue));
@@ -121,13 +231,36 @@ void DistortionAudioProcessor::updateEffectParameters()
     const bool bypass = readParameterValue (paramBypass.paramID, (float) paramBypass.defaultState) >= 0.5f;
     const double level = jlimit (0.0, 1.0, (double) readParameterValue (paramLevel.paramID, paramLevel.defaultValue) / 100.0);
 
-    for (auto& dist : distortionPlusChains) if (dist) { dist->setOpampDistortionControl (distortion); dist->setLevelControl (level); dist->setBypass (bypass); }
-    for (auto& ts : ts9Chains) if (ts) { ts->setDriveControl (distortion); ts->setToneControl (tone); ts->setLevelControl (level); ts->setBypass (bypass); }
-    for (auto& ac : acBoosterChains) if (ac) { ac->setGainControl (distortion); ac->setBassControl (bass); ac->setTrebleControl (treble); ac->setLevelControl (level); ac->setBypass (bypass); }
-    for (auto& ds : ds1Chains) if (ds) { ds->setGainControl (distortion); ds->setToneControl (tone); ds->setLevelControl (level); ds->setBypass (bypass); }
-    for (auto& rt : ratChains) if (rt) { rt->setDistortionControl (distortion); rt->setFilterControl (tone); rt->setLevelControl (level); rt->setBypass (bypass); }
-    for (auto& kl : klonChains) if (kl) { kl->setGainControl (distortion); kl->setTrebleControl (tone); kl->setLevelControl (level); kl->setBypass (bypass); }
-    for (auto& gv : guvnorChains) if (gv) { gv->setGainControl (distortion); gv->setTrebleControl (tone); gv->setBassControl (bass); gv->setMidControl (treble); gv->setLevelControl (level); gv->setBypass (bypass); }
+    switch (model)
+    {
+        case kTs9:
+            for (auto& ts : ts9Chains) if (ts) { ts->setDriveControl (distortion); ts->setToneControl (tone); ts->setLevelControl (level); ts->setBypass (bypass); }
+            break;
+        case kAcBooster:
+            for (auto& ac : acBoosterChains) if (ac) { ac->setGainControl (distortion); ac->setBassControl (bass); ac->setTrebleControl (treble); ac->setLevelControl (level); ac->setBypass (bypass); }
+            break;
+        case kDs1:
+            for (auto& ds : ds1Chains) if (ds) { ds->setGainControl (distortion); ds->setToneControl (tone); ds->setLevelControl (level); ds->setBypass (bypass); }
+            break;
+        case kRat:
+            for (auto& rt : ratChains) if (rt) { rt->setDistortionControl (distortion); rt->setFilterControl (tone); rt->setLevelControl (level); rt->setBypass (bypass); }
+            break;
+        case kKlon:
+            for (auto& kl : klonChains) if (kl) { kl->setGainControl (distortion); kl->setTrebleControl (tone); kl->setLevelControl (level); kl->setBypass (bypass); }
+            break;
+        case kGuvnor:
+            for (auto& gv : guvnorChains) if (gv) { gv->setGainControl (distortion); gv->setTrebleControl (tone); gv->setBassControl (bass); gv->setMidControl (treble); gv->setLevelControl (level); gv->setBypass (bypass); }
+            break;
+        case kDistortionPlus:
+        default:
+            for (auto& dist : distortionPlusChains) if (dist) { dist->setOpampDistortionControl (distortion); dist->setLevelControl (level); dist->setBypass (bypass); }
+            break;
+    }
+}
+
+void DistortionAudioProcessor::updateEffectParameters()
+{
+    updateEffectParametersForModel (currentModel.load());
 }
 
 static void setupOversamplers (nx_upsampler_t* ups[], nx_downsampler_t* downs[], int maxChannels, int factor)
@@ -146,14 +279,17 @@ void DistortionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     gateGain = { 1.0f, 1.0f };
 
     const int osFactor = oversampleFactor.load();
+    const auto activeModel = currentModel.load();
 
     for (int ch = 0; ch < maxChannels; ++ch)
     {
-        if (!upSamplers[ch]) { upSamplers[ch] = nx_upsampler_create_f32 (nullptr); nx_upsampler_set_mode_f32 (upSamplers[ch], NX_UPSAMPLER_MODE_CUBIC); }
-        if (!downSamplers[ch]) { downSamplers[ch] = nx_downsampler_create_f32 (nullptr); nx_downsampler_set_mode_f32 (downSamplers[ch], NX_DOWNSAMPLER_MODE_CUBIC); }
+        const auto chIdx = (size_t) ch;
+        if (!upSamplers[chIdx]) { upSamplers[chIdx] = nx_upsampler_create_f32 (nullptr); nx_upsampler_set_mode_f32 (upSamplers[chIdx], NX_UPSAMPLER_MODE_CUBIC); }
+        if (!downSamplers[chIdx]) { downSamplers[chIdx] = nx_downsampler_create_f32 (nullptr); nx_downsampler_set_mode_f32 (downSamplers[chIdx], NX_DOWNSAMPLER_MODE_CUBIC); }
     }
     setupOversamplers (upSamplers.data(), downSamplers.data(), maxChannels, osFactor);
     lastOsFactor = osFactor;
+    lastModel = activeModel;
 
     const double smoothTime = 1e-3;
     paramInputGain.reset (sampleRate, smoothTime);
@@ -167,15 +303,18 @@ void DistortionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     paramBypass.reset (sampleRate, smoothTime);
 
     syncParametersFromValueTree();
+
+    // Fast path: only prepare the active model so the UI can appear quickly.
+    // Remaining models are preloaded later from the editor with a progress overlay.
     ensureEffectInstances();
 
-    for (auto& dist : distortionPlusChains) { dist->prepare (sampleRate * osFactor); dist->reset(); dist->tick (1); }
-    for (auto& ts : ts9Chains) { ts->prepare (sampleRate * osFactor); ts->reset(); ts->tick (1); }
-    for (auto& ac : acBoosterChains) { ac->prepare (sampleRate * osFactor); ac->reset(); ac->tick (1); }
-    for (auto& ds : ds1Chains) { ds->prepare (sampleRate * osFactor); ds->reset(); ds->tick (1); }
-    for (auto& rt : ratChains) { rt->prepare (sampleRate * osFactor); rt->reset(); rt->tick (1); }
-    for (auto& kl : klonChains) { kl->prepare (sampleRate * osFactor); kl->reset(); kl->tick (1); }
-    for (auto& gv : guvnorChains) { gv->prepare (sampleRate * osFactor); gv->reset(); gv->tick (1); }
+    const bool sampleRateChanged = lastPreparedSampleRate > 0.0
+                                   && std::abs (sampleRate - lastPreparedSampleRate) > 1.0e-6;
+
+    if (startupComplete.load() && sampleRateChanged)
+        prepareAllEffectChains (sampleRate, osFactor);
+    else
+        prepareEffectChainsForModel (activeModel, sampleRate, osFactor);
 
     if (outputGain)
     {
@@ -191,13 +330,58 @@ void DistortionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     for (auto& ob : oversampleBuffers) ob.setSize (1, samplesPerBlock * osFactor);
 
     updateEffectParameters();
-    for (auto& dist : distortionPlusChains) dist->tick (1);
-    for (auto& ts : ts9Chains) ts->tick (1);
-    for (auto& ac : acBoosterChains) ac->tick (1);
-    for (auto& ds : ds1Chains) ds->tick (1);
-    for (auto& rt : ratChains) rt->tick (1);
-    for (auto& kl : klonChains) kl->tick (1);
-    for (auto& gv : guvnorChains) gv->tick (1);
+    lastPreparedSampleRate = sampleRate;
+}
+
+bool DistortionAudioProcessor::advanceModelPreloadStep()
+{
+    if (startupComplete.load() || ! modelPreloadPending.load())
+        return false;
+
+    const int osFactor = oversampleFactor.load();
+    const double sampleRate = currentSampleRate > 0.0 ? currentSampleRate : 44100.0;
+    const auto activeModel = currentModel.load();
+    constexpr int totalSteps = numDistortionModels;
+
+    if (preloadStepIndex >= totalSteps)
+    {
+        reportStartupProgress (1.0f, "Ready");
+        modelPreloadPending.store (false);
+        startupComplete.store (true);
+        return false;
+    }
+
+    const auto model = (DistortionModel) preloadStepIndex;
+    const float progress = (float) preloadStepIndex / (float) totalSteps;
+
+    // Never touch the live active model from the message thread while audio is running.
+    if (model == activeModel && isModelPreparedForOs (model, osFactor))
+    {
+        reportStartupProgress (progress, getModelDisplayName (model) + " already ready");
+    }
+    else if (model == activeModel)
+    {
+        reportStartupProgress (progress, "Waiting for " + getModelDisplayName (model) + "...");
+    }
+    else
+    {
+        reportStartupProgress (progress, "Loading " + getModelDisplayName (model) + "...");
+        ensureEffectInstancesForModel (model);
+        prepareEffectChainsForModel (model, sampleRate, osFactor);
+        updateEffectParametersForModel (model);
+    }
+
+    ++preloadStepIndex;
+
+    if (preloadStepIndex >= totalSteps)
+    {
+        reportStartupProgress (1.0f, "Ready");
+        modelPreloadPending.store (false);
+        startupComplete.store (true);
+        return false;
+    }
+
+    return true;
 }
 
 void DistortionAudioProcessor::releaseResources()
@@ -296,7 +480,21 @@ void DistortionAudioProcessor::processBlock (AudioSampleBuffer& buffer, MidiBuff
     if (osFactor != lastOsFactor)
     {
         setupOversamplers (upSamplers.data(), downSamplers.data(), maxChannels, osFactor);
+
+        // Avoid racing message-thread preload; only re-prepare once startup is done
+        // or when the active model is already known prepared for this OS factor.
+        if (startupComplete.load() || isModelPreparedForOs (model, osFactor))
+            prepareEffectChainsForModel (model, currentSampleRate, osFactor);
+
         lastOsFactor = osFactor;
+    }
+
+    if (model != lastModel)
+    {
+        if (startupComplete.load() && ! isModelPreparedForOs (model, osFactor))
+            prepareEffectChainsForModel (model, currentSampleRate, osFactor);
+
+        lastModel = model;
     }
 
     for (int ch = 0; ch < procCh; ++ch)

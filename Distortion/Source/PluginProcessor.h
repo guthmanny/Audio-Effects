@@ -26,6 +26,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <memory>
 
 //==============================================================================
@@ -103,15 +104,35 @@ public:
     DistortionModel getDistortionModel() const noexcept;
     void setDistortionModel (DistortionModel model) noexcept;
 
+    using StartupProgressCallback = std::function<void (float progress, const String& statusMessage)>;
+
+    void setStartupProgressCallback (StartupProgressCallback callback);
+    bool isStartupComplete() const noexcept;
+    bool isModelPreloadPending() const noexcept;
+    /** Advances one preload step. Returns true while more work remains. */
+    bool advanceModelPreloadStep();
+
 private:
     //==============================================================================
 
     static constexpr int maxChannels = 2;
+    static constexpr int numDistortionModels = 7;
 
     float readParameterValue (const String& paramId, float fallback) const;
     void syncParametersFromValueTree();
     void updateEffectParameters();
+    void updateEffectParametersForModel (DistortionModel model);
+    static String getModelDisplayName (DistortionModel model);
+
+    void reportStartupProgress (float progress, const String& statusMessage);
+
     void ensureEffectInstances();
+    void ensureEffectInstancesForModel (DistortionModel model);
+    void prepareAllEffectChains (double sampleRate, int osFactor);
+    void prepareEffectChainsForModel (DistortionModel model, double sampleRate, int osFactor);
+    void markAllModelsPrepared (int osFactor);
+    void markModelPrepared (DistortionModel model, int osFactor);
+    bool isModelPreparedForOs (DistortionModel model, int osFactor) const;
 
     void processInputGain (AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
     void processGate (AudioSampleBuffer& buffer, int numChannels, int numSamples, float thresholdDb);
@@ -149,6 +170,15 @@ private:
     std::atomic<DistortionModel> currentModel { kDistortionPlus };
     int lastOsFactor = 0;  // audio-thread only: tracks sampler config state
     DistortionModel lastModel = kDistortionPlus;  // audio-thread only
+    double lastPreparedSampleRate = 0.0;
+
+    std::atomic<bool> startupComplete { false };
+    std::atomic<bool> modelPreloadPending { true };
+    int preloadStepIndex = 0;
+    StartupProgressCallback startupProgressCallback;
+    CriticalSection dspInitLock;
+
+    std::array<int, numDistortionModels> modelPreparedOsFactor {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DistortionAudioProcessor)
 };
