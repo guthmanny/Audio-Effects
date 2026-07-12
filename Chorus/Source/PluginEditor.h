@@ -6,6 +6,7 @@
 #include "ChorusFooterComponent.h"
 #include "ChorusHeaderComponent.h"
 #include "PluginProcessor.h"
+#include "SpectrumOverlayComponent.h"
 #include "TunerOverlayComponent.h"
 
 class ChorusBodyContent final : public juce::Component
@@ -37,6 +38,7 @@ public:
 
     void updateModelUI();
     void setTunerVisible (bool shouldShow);
+    void setSpectrumVisible (bool shouldShow);
 
 private:
     void timerCallback() override;
@@ -71,6 +73,9 @@ private:
     ChorusBodyContent bodyContent;
     juce::Viewport bodyViewport;
     TunerOverlay tunerOverlay;
+    SpectrumOverlay spectrumOverlay;
+    std::vector<float> spectrumScratch;
+    uint32_t lastSpectrumFrameId = 0;
 
     // Chorus model slider pointers
     atom::Slider* chorusRateSlider = nullptr;

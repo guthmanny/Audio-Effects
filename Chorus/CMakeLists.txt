@@ -86,6 +86,11 @@ target_sources(Chorus PRIVATE
     Source/ChorusFooterComponent.h
     Source/TunerOverlayComponent.cpp
     Source/TunerOverlayComponent.h
+    Source/SpectrumOverlayComponent.cpp
+    Source/SpectrumOverlayComponent.h
+    Source/SpectrumCurveComponent.cpp
+    Source/SpectrumCurveComponent.h
+    Source/SpectrumAnalyzer.h
     Source/QPitchDetector.h
     Source/PluginParameter.h
     Source/StandaloneMain.cpp
@@ -127,6 +132,7 @@ target_compile_options(Chorus PRIVATE
 target_link_libraries(Chorus PRIVATE
     juce::juce_audio_utils
     juce::juce_audio_devices
+    juce::juce_dsp
     juce::juce_atom_theme
     nudsp
     PUBLIC

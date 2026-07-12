@@ -49,7 +49,11 @@ ChorusAudioProcessor::ChorusAudioProcessor()
   parameters.valueTreeState.state = ValueTree(Identifier(getName().removeCharacters("- ")));
 }
 
-ChorusAudioProcessor::~ChorusAudioProcessor() {}
+ChorusAudioProcessor::~ChorusAudioProcessor()
+{
+  spectrumEnabled.store(false);
+  spectrumAnalyzer.stopAnalysis();
+}
 
 void ChorusAudioProcessor::setTunerEnabled(bool shouldEnable) noexcept
 {
@@ -73,6 +77,45 @@ void ChorusAudioProcessor::setTunerPeriodicityThreshold(float threshold) noexcep
   const float clamped = juce::jlimit(0.0f, 1.0f, threshold);
   tunerPeriodicityThreshold.store(clamped);
   pitchDetector.setPeriodicityThreshold(clamped);
+}
+
+void ChorusAudioProcessor::setSpectrumEnabled(bool shouldEnable) noexcept
+{
+  if (shouldEnable)
+  {
+    spectrumAnalyzer.ensureReady();
+    spectrumAnalyzer.reset();
+    spectrumFftSize.store(spectrumAnalyzer.getFftSize());
+    spectrumAnalyzer.startAnalysis();
+    spectrumEnabled.store(true);
+  }
+  else
+  {
+    spectrumEnabled.store(false);
+    spectrumAnalyzer.stopAnalysis();
+  }
+}
+
+void ChorusAudioProcessor::setSpectrumFftSize(int fftSize)
+{
+  const bool wasEnabled = spectrumEnabled.exchange(false);
+  spectrumAnalyzer.stopAnalysis();
+
+  spectrumAnalyzer.setFftSize(fftSize);
+  spectrumAnalyzer.ensureReady();
+  spectrumAnalyzer.reset();
+  spectrumFftSize.store(spectrumAnalyzer.getFftSize());
+
+  if (wasEnabled)
+  {
+    spectrumAnalyzer.startAnalysis();
+    spectrumEnabled.store(true);
+  }
+}
+
+bool ChorusAudioProcessor::copySpectrumMagnitudesIfNew(uint32_t& lastFrameId, std::vector<float>& dest) const
+{
+  return spectrumAnalyzer.copyMagnitudesIfNew(lastFrameId, dest);
 }
 
 //==============================================================================
@@ -125,6 +168,24 @@ void ChorusAudioProcessor::ensureEffectInstances()
   }
   // Phase90
   if (phase90 == nullptr) phase90 = std::make_unique<nudsp::camel::Phase90F32>();
+}
+
+void ChorusAudioProcessor::ensureScratchBuffers(int numChannels, int numSamples)
+{
+  const int channels = jmax(1, numChannels);
+  const int samples = jmax(1, numSamples);
+
+  if (dryBuffer.getNumChannels() < channels || dryBuffer.getNumSamples() < samples)
+    dryBuffer.setSize(channels, samples, false, false, true);
+
+  if (monoBuffer.getNumChannels() < 1 || monoBuffer.getNumSamples() < samples)
+    monoBuffer.setSize(1, samples, false, false, true);
+
+  if (chorusBuffer.getNumChannels() < 1 || chorusBuffer.getNumSamples() < samples)
+    chorusBuffer.setSize(1, samples, false, false, true);
+
+  if (phase90Buffer.getNumChannels() < channels || phase90Buffer.getNumSamples() < samples)
+    phase90Buffer.setSize(channels, samples, false, false, true);
 }
 
 void ChorusAudioProcessor::updateEffectParameters()
@@ -217,6 +278,14 @@ void ChorusAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     tunerResult = {};
   }
 
+  spectrumAnalyzer.setSampleRate(sampleRate);
+  if (spectrumEnabled.load())
+  {
+    spectrumAnalyzer.ensureReady();
+    spectrumAnalyzer.reset();
+    spectrumAnalyzer.startAnalysis();
+  }
+
   // Prepare Chorus
   chorus->prepare(sampleRate);
   chorus->reset();
@@ -232,11 +301,8 @@ void ChorusAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   phase90->reset();
   phase90->tick(1);
 
-  const int numChannels = jmax(getTotalNumInputChannels(), getTotalNumOutputChannels());
-  dryBuffer.setSize(numChannels, samplesPerBlock);
-  monoBuffer.setSize(1, samplesPerBlock);
-  chorusBuffer.setSize(1, samplesPerBlock);
-  phase90Buffer.setSize(numChannels, samplesPerBlock);
+  const int numChannels = jmax(1, jmax(getTotalNumInputChannels(), getTotalNumOutputChannels()));
+  ensureScratchBuffers(numChannels, samplesPerBlock);
 
   updateEffectParameters();
   chorus->tick(1);
@@ -246,10 +312,11 @@ void ChorusAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void ChorusAudioProcessor::releaseResources()
 {
-  dryBuffer.setSize(0, 0);
-  monoBuffer.setSize(0, 0);
-  chorusBuffer.setSize(0, 0);
-  phase90Buffer.setSize(0, 0);
+  // Keep scratch buffers allocated: JACK/PipeWire may restart the device while
+  // the audio callback is still draining, and deallocating here races processBlock.
+  if (! spectrumEnabled.load())
+    spectrumAnalyzer.stopAnalysis();
+
   gateEnvelope = {};
   gateGain = {1.0f, 1.0f};
 }
@@ -310,15 +377,9 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
 
   if (numSamples == 0) return;
 
-  // 确保缓冲区足够大
-  const int bufCh = jmax(numInputChannels, numOutputChannels);
-  if (dryBuffer.getNumSamples() < numSamples)
-  {
-    dryBuffer.setSize(bufCh, numSamples, false, false, true);
-    monoBuffer.setSize(1, numSamples, false, false, true);
-    chorusBuffer.setSize(1, numSamples, false, false, true);
-    phase90Buffer.setSize(bufCh, numSamples, false, false, true);
-  }
+  // 确保缓冲区足够大（同时检查通道数，避免 prepare/release 竞态后通道指针为空）
+  const int bufCh = jmax(1, jmax(numInputChannels, numOutputChannels));
+  ensureScratchBuffers(bufCh, numSamples);
 
   ensureEffectInstances();
   updateEffectParameters();
@@ -330,9 +391,10 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
   processInputGain(buffer, numInputChannels, numSamples, inputGainDb);
   processGate(buffer, jmin(numInputChannels, numOutputChannels), numSamples, gateThresholdDb);
 
-  if (tunerEnabled.load())
+  const bool needMonoAnalysis = tunerEnabled.load() || spectrumEnabled.load();
+  if (needMonoAnalysis && numInputChannels > 0)
   {
-    // Feed gated mono input into BCF pitch detector.
+    // Feed gated mono input into analysis tools.
     if (numInputChannels >= 2)
     {
       const float* left = buffer.getReadPointer(0);
@@ -340,20 +402,25 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
       for (int i = 0; i < numSamples; ++i)
         monoBuffer.setSample(0, i, 0.5f * (left[i] + right[i]));
     }
-    else if (numInputChannels == 1)
+    else
     {
       monoBuffer.copyFrom(0, 0, buffer, 0, 0, numSamples);
     }
 
-    if (numInputChannels > 0)
+    const float* mono = monoBuffer.getReadPointer(0);
+
+    if (tunerEnabled.load())
     {
-      const bool updated = pitchDetector.process(monoBuffer.getReadPointer(0), numSamples);
+      const bool updated = pitchDetector.process(mono, numSamples);
       if (updated)
       {
         const juce::SpinLock::ScopedLockType lock(tunerLock);
         tunerResult = pitchDetector.getResult();
       }
     }
+
+    if (spectrumEnabled.load())
+      spectrumAnalyzer.pushSamples(mono, numSamples);
   }
 
   const auto frameSize = (size_t)numSamples;

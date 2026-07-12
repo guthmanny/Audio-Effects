@@ -99,6 +99,11 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
     setTunerVisible (! tunerOverlay.isVisible());
   };
 
+  headerBar.getBtnSpectrum().onClick = [this]
+  {
+    setSpectrumVisible (! spectrumOverlay.isVisible());
+  };
+
   tunerOverlay.getContent().onCloseRequested = [this] { setTunerVisible (false); };
   tunerOverlay.getContent().onPeriodicityThresholdChanged = [this] (float threshold)
   {
@@ -107,6 +112,16 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   tunerOverlay.getContent().setPeriodicityThreshold (processor.getTunerPeriodicityThreshold());
   addChildComponent (tunerOverlay);
   tunerOverlay.setAlwaysOnTop (true);
+
+  spectrumOverlay.getContent().onCloseRequested = [this] { setSpectrumVisible (false); };
+  spectrumOverlay.getContent().onFftSizeChanged = [this] (int fftSize)
+  {
+    processor.setSpectrumFftSize (fftSize);
+    spectrumOverlay.getContent().clearSpectrum();
+  };
+  spectrumOverlay.getContent().setFftSize (processor.getSpectrumFftSize());
+  addChildComponent (spectrumOverlay);
+  spectrumOverlay.setAlwaysOnTop (true);
 
   headerBar.getTapTempo().onBPMChanged = [this](double bpm)
   {
@@ -327,6 +342,26 @@ void ChorusAudioProcessorEditor::setTunerVisible (bool shouldShow)
   }
 }
 
+void ChorusAudioProcessorEditor::setSpectrumVisible (bool shouldShow)
+{
+  processor.setSpectrumEnabled (shouldShow);
+  spectrumOverlay.setVisible (shouldShow);
+
+  if (shouldShow)
+  {
+    spectrumOverlay.setBounds (getLocalBounds());
+    spectrumOverlay.toFront (false);
+    spectrumOverlay.getContent().setFftSize (processor.getSpectrumFftSize());
+    spectrumOverlay.getContent().clearSpectrum();
+    lastSpectrumFrameId = 0;
+    startTimerHz (60);
+  }
+  else
+  {
+    startTimerHz (30);
+  }
+}
+
 void ChorusAudioProcessorEditor::timerCallback()
 {
   headerBar.setMeterLevels(processor.getMeterLevelMono(), processor.getMeterLevelLeft(),
@@ -334,6 +369,14 @@ void ChorusAudioProcessorEditor::timerCallback()
 
   if (tunerOverlay.isVisible())
     tunerOverlay.getContent().setPitchResult (processor.getTunerResult());
+
+  if (spectrumOverlay.isVisible()
+      && processor.copySpectrumMagnitudesIfNew (lastSpectrumFrameId, spectrumScratch))
+  {
+    spectrumOverlay.getContent().setSpectrumMagnitudes (spectrumScratch,
+                                                        processor.getSpectrumSampleRate(),
+                                                        processor.getSpectrumFftSize());
+  }
 }
 
 void ChorusAudioProcessorEditor::paint(juce::Graphics& g)
@@ -353,6 +396,9 @@ void ChorusAudioProcessorEditor::resized()
 
   if (tunerOverlay.isVisible())
     tunerOverlay.setBounds(getLocalBounds());
+
+  if (spectrumOverlay.isVisible())
+    spectrumOverlay.setBounds(getLocalBounds());
 
   bodyContent.setSize(juce::jmax(getWidth(), getEditorWidth()), juce::jmax(getBodyContentHeight(), bounds.getHeight()));
 

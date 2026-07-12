@@ -10,10 +10,13 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "../JuceLibraryCode/JuceHeader.h"
 #include "QPitchDetector.h"
+#include "SpectrumAnalyzer.h"
 #include "PluginParameter.h"
 #include "nudsp/extensions/camel/chorus.hpp"
 #include "nudsp/extensions/camel/phase90.hpp"
@@ -111,6 +114,14 @@ class ChorusAudioProcessor : public AudioProcessor
   void setTunerPeriodicityThreshold(float threshold) noexcept;
   float getTunerPeriodicityThreshold() const noexcept { return tunerPeriodicityThreshold.load(); }
 
+  void setSpectrumEnabled(bool shouldEnable) noexcept;
+  bool isSpectrumEnabled() const noexcept { return spectrumEnabled.load(); }
+  void setSpectrumFftSize(int fftSize);
+  /** Copies new spectrum data into @p dest if frame advanced since @p lastFrameId. */
+  bool copySpectrumMagnitudesIfNew (uint32_t& lastFrameId, std::vector<float>& dest) const;
+  int getSpectrumFftSize() const noexcept { return spectrumFftSize.load(); }
+  double getSpectrumSampleRate() const noexcept { return currentSampleRate; }
+
  private:
   //==============================================================================
 
@@ -120,6 +131,7 @@ class ChorusAudioProcessor : public AudioProcessor
   void syncParametersFromValueTree();
   void updateEffectParameters();
   void ensureEffectInstances();
+  void ensureScratchBuffers(int numChannels, int numSamples);
 
   void processInputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
   void processGate(AudioSampleBuffer& buffer, int numChannels, int numSamples, float thresholdDb);
@@ -150,6 +162,10 @@ class ChorusAudioProcessor : public AudioProcessor
   QPitchDetector pitchDetector;
   mutable juce::SpinLock tunerLock;
   QPitchDetector::Result tunerResult{};
+
+  std::atomic<bool> spectrumEnabled{false};
+  std::atomic<int> spectrumFftSize{1 << SpectrumAnalyzer::defaultFftOrder};
+  SpectrumAnalyzer spectrumAnalyzer;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ChorusAudioProcessor)
 };
