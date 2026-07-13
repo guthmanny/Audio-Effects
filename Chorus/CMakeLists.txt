@@ -71,6 +71,7 @@ juce_add_plugin(Chorus
     PLUGIN_CODE Chrs
     FORMATS Standalone
     PRODUCT_NAME "Chorus"
+    NEEDS_MIDI_INPUT TRUE
 )
 
 juce_generate_juce_header(Chorus)
@@ -105,6 +106,8 @@ target_sources(Chorus PRIVATE
     Source/AppSettingsPanel.h
     Source/NoiseGateSettingsPanel.cpp
     Source/NoiseGateSettingsPanel.h
+    Source/ChorusMidiCcSettingsPanel.cpp
+    Source/ChorusMidiCcSettingsPanel.h
     Source/CompressorCurveComponent.cpp
     Source/CompressorCurveComponent.h
     Source/CompressorKnee.h

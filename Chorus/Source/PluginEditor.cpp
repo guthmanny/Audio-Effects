@@ -155,7 +155,9 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   const juce::StringArray headerParamIds{"inputgain", "gatethreshold", "outputgain"};
   // Gate advanced controls live only in Settings → Noise Gate.
   const juce::StringArray settingsOnlyParamIds{"gatethreshmin", "gatethreshmax", "gateoffatmin", "gateratio",
-                                               "gateattack", "gaterelease", "gateknee", "gatekneewidth"};
+                                               "gateattack", "gaterelease", "gateknee", "gatekneewidth",
+                                               "midiccchorusrate", "midiccchorusdelay", "midiccchorusamount",
+                                               "midiccchoruswet", "midiccchorusfeedback"};
 
   const auto uiFont = AtomLookAndFeel::getUIFont(AtomLookAndFeel::getSystemUIFontHeight(), juce::Font::plain);
   const float uiFontHeight = AtomLookAndFeel::getSystemUIFontHeight();

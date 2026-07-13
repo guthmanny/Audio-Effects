@@ -97,6 +97,13 @@ class ChorusAudioProcessor : public AudioProcessor
   PluginParameterLinSlider paramChorusWet;
   PluginParameterLinSlider paramChorusFeedback;
 
+  // Settings → MIDI CC：Chorus 参数的 CC 分配（0=Off, 1..128 = CC0..CC127）
+  PluginParameterComboBox paramMidiCcChorusRate;
+  PluginParameterComboBox paramMidiCcChorusDelay;
+  PluginParameterComboBox paramMidiCcChorusAmount;
+  PluginParameterComboBox paramMidiCcChorusWet;
+  PluginParameterComboBox paramMidiCcChorusFeedback;
+
   // Phase90 模型参数
   PluginParameterLogSlider paramPhase90Rate;
   PluginParameterLogSlider paramCenter;
@@ -136,6 +143,11 @@ class ChorusAudioProcessor : public AudioProcessor
   void updateEffectParameters();
   void ensureScratchBuffers(int numChannels, int numSamples);
   void pushAnalysisMono(const AudioSampleBuffer& buffer, int numChannels, int numSamples);
+  void handleIncomingMidi (const MidiBuffer& midiMessages);
+  void applyMidiCcToParameter (PluginParameterLinSlider& target, float controllerNormalized);
+
+  /** Choice index 0 = Off; 1..128 = CC 0..127. Returns -1 if Off. */
+  static int midiCcChoiceToNumber (float choiceValue) noexcept;
 
   MinibussChorusEngine minibussEngine;
   AudioSampleBuffer dryBuffer;

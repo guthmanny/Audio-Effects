@@ -1,6 +1,7 @@
 #include "AppSettingsPanel.h"
 
 #include "AudioSettingsPanel.h"
+#include "ChorusMidiCcSettingsPanel.h"
 #include "NoiseGateSettingsPanel.h"
 #include "PluginProcessor.h"
 
@@ -32,7 +33,6 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (4.0f, 2.0f);
-        const auto bg = findColour (juce::ResizableWindow::backgroundColourId);
         const auto text = findColour (juce::Label::textColourId);
 
         if (selected || isMouseOver())
@@ -81,8 +81,10 @@ AppSettingsPanel::AppSettingsPanel (juce::AudioDeviceManager& deviceManagerIn,
 
     audioPage = std::make_unique<AudioSettingsPanel> (deviceManager, atomLookAndFeel);
     noiseGatePage = std::make_unique<NoiseGateSettingsPanel> (processor, atomLookAndFeel);
+    chorusMidiCcPage = std::make_unique<ChorusMidiCcSettingsPanel> (processor, atomLookAndFeel);
     contentHost.addChildComponent (*audioPage);
     contentHost.addChildComponent (*noiseGatePage);
+    contentHost.addChildComponent (*chorusMidiCcPage);
 
     rebuildNav();
     selectPage (Page::AudioSettings);
@@ -106,6 +108,7 @@ void AppSettingsPanel::rebuildNav()
 
     addItem ("Audio Settings", Page::AudioSettings);
     addItem ("Noise Gate", Page::NoiseGate);
+    addItem ("MIDI CC", Page::ChorusMidiCc);
 }
 
 void AppSettingsPanel::selectPage (Page page)
@@ -123,6 +126,8 @@ void AppSettingsPanel::showSelectedPage()
         audioPage->setVisible (selectedPage == Page::AudioSettings);
     if (noiseGatePage != nullptr)
         noiseGatePage->setVisible (selectedPage == Page::NoiseGate);
+    if (chorusMidiCcPage != nullptr)
+        chorusMidiCcPage->setVisible (selectedPage == Page::ChorusMidiCc);
 }
 
 int AppSettingsPanel::getMinimumWidth() const noexcept
@@ -168,4 +173,6 @@ void AppSettingsPanel::resized()
         audioPage->setBounds (contentHost.getLocalBounds());
     if (noiseGatePage != nullptr)
         noiseGatePage->setBounds (contentHost.getLocalBounds());
+    if (chorusMidiCcPage != nullptr)
+        chorusMidiCcPage->setBounds (contentHost.getLocalBounds());
 }

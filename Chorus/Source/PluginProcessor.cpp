@@ -14,6 +14,18 @@
 #include "PluginEditor.h"
 #include "PluginParameter.h"
 
+namespace
+{
+juce::StringArray makeMidiCcChoiceList()
+{
+  juce::StringArray items;
+  items.add ("Off");
+  for (int cc = 0; cc <= 127; ++cc)
+    items.add ("CC " + juce::String (cc));
+  return items;
+}
+} // namespace
+
 //==============================================================================
 
 ChorusAudioProcessor::ChorusAudioProcessor()
@@ -47,6 +59,11 @@ ChorusAudioProcessor::ChorusAudioProcessor()
       paramChorusAmount(parameters, "Chorus Amount", "ms", 0.0f, 50.0f, 5.0f),
       paramChorusWet(parameters, "Chorus Wet", "", 0.0f, 1.0f, 0.5f),
       paramChorusFeedback(parameters, "Chorus Feedback", "", -1.0f, 1.0f, 0.15f),
+      paramMidiCcChorusRate(parameters, "MIDI CC Chorus Rate", makeMidiCcChoiceList(), 0),
+      paramMidiCcChorusDelay(parameters, "MIDI CC Chorus Delay", makeMidiCcChoiceList(), 0),
+      paramMidiCcChorusAmount(parameters, "MIDI CC Chorus Amount", makeMidiCcChoiceList(), 0),
+      paramMidiCcChorusWet(parameters, "MIDI CC Chorus Wet", makeMidiCcChoiceList(), 0),
+      paramMidiCcChorusFeedback(parameters, "MIDI CC Chorus Feedback", makeMidiCcChoiceList(), 0),
       // Phase90 参数
       paramPhase90Rate(parameters, "Phase90 Rate", "Hz", 0.1f, 20.0f, 1.0f),
       paramCenter(parameters, "Center", "Hz", 20.0f, 10000.0f, 1000.0f),
@@ -353,8 +370,9 @@ void ChorusAudioProcessor::releaseResources()
 
 void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& midiMessages)
 {
-  ignoreUnused(midiMessages);
   ScopedNoDenormals noDenormals;
+
+  handleIncomingMidi (midiMessages);
 
   const int numInputChannels = getTotalNumInputChannels();
   const int numOutputChannels = getTotalNumOutputChannels();
@@ -405,6 +423,62 @@ void ChorusAudioProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& m
   meterMono.store(monoPeak);
   meterLeft.store(leftPeak);
   meterRight.store(rightPeak);
+}
+
+int ChorusAudioProcessor::midiCcChoiceToNumber (float choiceValue) noexcept
+{
+  const int choice = juce::roundToInt (choiceValue);
+  if (choice <= 0)
+    return -1;
+  return juce::jlimit (0, 127, choice - 1);
+}
+
+void ChorusAudioProcessor::applyMidiCcToParameter (PluginParameterLinSlider& target,
+                                                   float controllerNormalized)
+{
+  const float domain = target.minValue
+                       + juce::jlimit (0.0f, 1.0f, controllerNormalized)
+                             * (target.maxValue - target.minValue);
+  if (auto* param = parameters.valueTreeState.getParameter (target.paramID))
+    param->setValueNotifyingHost (param->convertTo0to1 (domain));
+}
+
+void ChorusAudioProcessor::handleIncomingMidi (const MidiBuffer& midiMessages)
+{
+  if (midiMessages.isEmpty())
+    return;
+
+  const int rateCc = midiCcChoiceToNumber (
+      readParameterValue (paramMidiCcChorusRate.paramID, (float) paramMidiCcChorusRate.defaultChoice));
+  const int delayCc = midiCcChoiceToNumber (
+      readParameterValue (paramMidiCcChorusDelay.paramID, (float) paramMidiCcChorusDelay.defaultChoice));
+  const int amountCc = midiCcChoiceToNumber (
+      readParameterValue (paramMidiCcChorusAmount.paramID, (float) paramMidiCcChorusAmount.defaultChoice));
+  const int wetCc = midiCcChoiceToNumber (
+      readParameterValue (paramMidiCcChorusWet.paramID, (float) paramMidiCcChorusWet.defaultChoice));
+  const int feedbackCc = midiCcChoiceToNumber (
+      readParameterValue (paramMidiCcChorusFeedback.paramID, (float) paramMidiCcChorusFeedback.defaultChoice));
+
+  for (const auto metadata : midiMessages)
+  {
+    const auto msg = metadata.getMessage();
+    if (! msg.isController())
+      continue;
+
+    const int cc = msg.getControllerNumber();
+    const float norm = (float) msg.getControllerValue() / 127.0f;
+
+    if (cc == rateCc)
+      applyMidiCcToParameter (paramChorusRate, norm);
+    if (cc == delayCc)
+      applyMidiCcToParameter (paramChorusDelay, norm);
+    if (cc == amountCc)
+      applyMidiCcToParameter (paramChorusAmount, norm);
+    if (cc == wetCc)
+      applyMidiCcToParameter (paramChorusWet, norm);
+    if (cc == feedbackCc)
+      applyMidiCcToParameter (paramChorusFeedback, norm);
+  }
 }
 
 //==============================================================================

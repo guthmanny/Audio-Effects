@@ -9,6 +9,7 @@
 
 class AudioSettingsPanel;
 class ChorusAudioProcessor;
+class ChorusMidiCcSettingsPanel;
 class NoiseGateSettingsPanel;
 
 /** App-wide settings shell: left category list, right page content. */
@@ -18,7 +19,8 @@ public:
     enum class Page
     {
         AudioSettings = 0,
-        NoiseGate
+        NoiseGate,
+        ChorusMidiCc
     };
 
     AppSettingsPanel (juce::AudioDeviceManager& deviceManager,
@@ -53,6 +55,7 @@ private:
 
     std::unique_ptr<AudioSettingsPanel> audioPage;
     std::unique_ptr<NoiseGateSettingsPanel> noiseGatePage;
+    std::unique_ptr<ChorusMidiCcSettingsPanel> chorusMidiCcPage;
     std::vector<std::unique_ptr<NavItem>> navItems;
 
     Page selectedPage = Page::AudioSettings;
