@@ -1,9 +1,12 @@
 #include "PluginEditor.h"
 
+#include <algorithm>
+#include <cmath>
+
 #if JucePlugin_Build_Standalone
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 
-#include "AudioSettingsPanel.h"
+#include "AppSettingsPanel.h"
 #endif
 
 namespace
@@ -90,7 +93,7 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   headerBar.getBtnSettings().onClick = [this]
   {
 #if JucePlugin_Build_Standalone
-    showStandaloneOptionsMenu();
+    showAppSettingsDialog();
 #endif
   };
 
@@ -150,6 +153,9 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   bodyContentHeight = bodyMargin;
 
   const juce::StringArray headerParamIds{"inputgain", "gatethreshold", "outputgain"};
+  // Gate advanced controls live only in Settings → Noise Gate.
+  const juce::StringArray settingsOnlyParamIds{"gatethreshmin", "gatethreshmax", "gateoffatmin", "gateratio",
+                                               "gateattack", "gaterelease", "gateknee", "gatekneewidth"};
 
   const auto uiFont = AtomLookAndFeel::getUIFont(AtomLookAndFeel::getSystemUIFontHeight(), juce::Font::plain);
   const float uiFontHeight = AtomLookAndFeel::getSystemUIFontHeight();
@@ -160,7 +166,8 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   {
     if (const auto* parameter = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameters[i]))
     {
-      if (headerParamIds.contains(parameter->paramID)) continue;
+      if (headerParamIds.contains(parameter->paramID) || settingsOnlyParamIds.contains(parameter->paramID))
+        continue;
 
       if (processor.parameters.parameterTypes[i] != "Slider") continue;
 
@@ -185,7 +192,8 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
   {
     if (const auto* parameter = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameters[i]))
     {
-      if (headerParamIds.contains(parameter->paramID)) continue;
+      if (headerParamIds.contains(parameter->paramID) || settingsOnlyParamIds.contains(parameter->paramID))
+        continue;
 
       if (processor.parameters.parameterTypes[i] == "Slider")
       {
@@ -194,14 +202,12 @@ ChorusAudioProcessorEditor::ChorusAudioProcessorEditor(ChorusAudioProcessor& p)
         // 跟踪模型特定 slider 指针
         if (parameter->paramID == "chorusrate")
           chorusRateSlider = aSlider;
-        else if (parameter->paramID == "predelay")
-          preDelaySlider = aSlider;
+        else if (parameter->paramID == "chorusdelay")
+          chorusDelaySlider = aSlider;
         else if (parameter->paramID == "chorusamount")
           chorusAmountSlider = aSlider;
-        else if (parameter->paramID == "dry")
-          drySlider = aSlider;
-        else if (parameter->paramID == "wet")
-          wetSlider = aSlider;
+        else if (parameter->paramID == "choruswet")
+          chorusWetSlider = aSlider;
         else if (parameter->paramID == "chorusfeedback")
           chorusFeedbackSlider = aSlider;
         else if (parameter->paramID == "phase90rate")
@@ -367,6 +373,36 @@ void ChorusAudioProcessorEditor::timerCallback()
   headerBar.setMeterLevels(processor.getMeterLevelMono(), processor.getMeterLevelLeft(),
                            processor.getMeterLevelRight());
 
+  // Keep header GATE knob within the Settings-defined threshold range.
+  {
+    auto readParam = [this](const juce::String& id, float fallback) -> float
+    {
+      if (auto* p = processor.parameters.valueTreeState.getParameter(id))
+        return p->convertFrom0to1(p->getValue());
+      return fallback;
+    };
+
+    float minDb = readParam(processor.paramGateThreshMin.paramID, processor.paramGateThreshMin.defaultValue);
+    float maxDb = readParam(processor.paramGateThreshMax.paramID, processor.paramGateThreshMax.defaultValue);
+    if (minDb > maxDb)
+      std::swap(minDb, maxDb);
+    if (maxDb - minDb < 0.1f)
+      maxDb = juce::jmin(0.0f, minDb + 0.1f);
+
+    auto& gateSlider = headerBar.getSliderGate();
+    if (std::abs(gateSlider.getMinimum() - (double)minDb) > 1.0e-4
+        || std::abs(gateSlider.getMaximum() - (double)maxDb) > 1.0e-4)
+      gateSlider.setRange((double)minDb, (double)maxDb, 0.01);
+
+    if (auto* threshParam = processor.parameters.valueTreeState.getParameter(processor.paramGateThreshold.paramID))
+    {
+      const float threshDb = threshParam->convertFrom0to1(threshParam->getValue());
+      const float clamped = juce::jlimit(minDb, maxDb, threshDb);
+      if (std::abs(clamped - threshDb) > 1.0e-3f)
+        threshParam->setValueNotifyingHost(threshParam->convertTo0to1(clamped));
+    }
+  }
+
   if (tunerOverlay.isVisible())
     tunerOverlay.getContent().setPitchResult (processor.getTunerResult());
 
@@ -424,10 +460,9 @@ void ChorusAudioProcessorEditor::updateModelUI()
 
   // Chorus 参数可见性
   if (chorusRateSlider != nullptr) chorusRateSlider->setVisible(isChorus);
-  if (preDelaySlider != nullptr) preDelaySlider->setVisible(isChorus);
+  if (chorusDelaySlider != nullptr) chorusDelaySlider->setVisible(isChorus);
   if (chorusAmountSlider != nullptr) chorusAmountSlider->setVisible(isChorus);
-  if (drySlider != nullptr) drySlider->setVisible(isChorus);
-  if (wetSlider != nullptr) wetSlider->setVisible(isChorus);
+  if (chorusWetSlider != nullptr) chorusWetSlider->setVisible(isChorus);
   if (chorusFeedbackSlider != nullptr) chorusFeedbackSlider->setVisible(isChorus);
 
   // Phase90 参数可见性
@@ -451,42 +486,45 @@ void ChorusAudioProcessorEditor::updateModelUI()
 }
 
 #if JucePlugin_Build_Standalone
-void ChorusAudioProcessorEditor::applyAudioSettingsDialogTitleBarTheme()
+void ChorusAudioProcessorEditor::applyAppSettingsDialogTitleBarTheme()
 {
-  if (audioSettingsDialog == nullptr) return;
+  if (appSettingsDialog == nullptr) return;
 
-  applySystemNativeTitleBarTheme(*audioSettingsDialog);
+  applySystemNativeTitleBarTheme(*appSettingsDialog);
 }
 
-void ChorusAudioProcessorEditor::darkModeSettingChanged() { applyAudioSettingsDialogTitleBarTheme(); }
+void ChorusAudioProcessorEditor::darkModeSettingChanged() { applyAppSettingsDialogTitleBarTheme(); }
 
-void ChorusAudioProcessorEditor::showAudioSettingsDialog()
+void ChorusAudioProcessorEditor::showAppSettingsDialog (AppSettingsPanel::Page initialPage)
 {
-  if (audioSettingsDialog != nullptr)
+  if (appSettingsDialog != nullptr)
   {
-    audioSettingsDialog->toFront(true);
-    audioSettingsDialog->grabKeyboardFocus();
+    if (auto* panel = dynamic_cast<AppSettingsPanel*> (appSettingsDialog->getContentComponent()))
+      panel->selectPage (initialPage);
+
+    appSettingsDialog->toFront(true);
+    appSettingsDialog->grabKeyboardFocus();
     return;
   }
 
   auto* window = findParentComponentOfClass<juce::StandaloneFilterWindow>();
   if (window == nullptr) return;
 
-  auto* panel = new AudioSettingsPanel(window->getDeviceManager(), atomLookAndFeel);
+  auto* panel = new AppSettingsPanel (window->getDeviceManager(), processor, atomLookAndFeel);
+  panel->selectPage (initialPage);
+  panel->setSize (panel->getPreferredWidth(), panel->getPreferredHeight());
 
-  panel->setSize(560, 420);
-
-  const int minPanelW = panel->getMinimumPanelWidth();
-  const int minPanelH = panel->getMinimumPanelHeight();
-  constexpr int kMaxMinW = 520;
-  constexpr int kMaxMinH = 600;
-  const int clampedMinW = juce::jmin(minPanelW, kMaxMinW);
-  const int clampedMinH = juce::jmin(minPanelH, kMaxMinH);
-  const int minDialogW = juce::jmax(400, clampedMinW + 20);
-  const int minDialogH = juce::jmax(300, clampedMinH + 40);
+  const int minPanelW = panel->getMinimumWidth();
+  const int minPanelH = panel->getMinimumHeight();
+  constexpr int kMaxMinW = 720;
+  constexpr int kMaxMinH = 640;
+  const int clampedMinW = juce::jmin (minPanelW, kMaxMinW);
+  const int clampedMinH = juce::jmin (minPanelH, kMaxMinH);
+  const int minDialogW = juce::jmax (560, clampedMinW + 20);
+  const int minDialogH = juce::jmax (360, clampedMinH + 40);
 
   juce::DialogWindow::LaunchOptions options;
-  options.dialogTitle = "Audio Settings";
+  options.dialogTitle = "Settings";
   options.dialogBackgroundColour = getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId);
   options.escapeKeyTriggersCloseButton = true;
   options.useNativeTitleBar = true;
@@ -496,13 +534,13 @@ void ChorusAudioProcessorEditor::showAudioSettingsDialog()
   options.componentToCentreAround = window;
 
   auto* dialog = options.create();
-  audioSettingsDialog = dialog;
+  appSettingsDialog = dialog;
 
   if (dialog != nullptr)
   {
     dialog->setResizeLimits(minDialogW, minDialogH, 1600, 1200);
     dialog->setAlwaysOnTop(true);
-    applyAudioSettingsDialogTitleBarTheme();
+    applyAppSettingsDialogTitleBarTheme();
 
     juce::Component::SafePointer<juce::Component> safeDialog(dialog);
     juce::Timer::callAfterDelay(0,
@@ -516,7 +554,7 @@ void ChorusAudioProcessorEditor::showAudioSettingsDialog()
                             juce::ModalCallbackFunction::create(
                                 [safeEditor](int)
                                 {
-                                  if (safeEditor != nullptr) safeEditor->audioSettingsDialog = nullptr;
+                                  if (safeEditor != nullptr) safeEditor->appSettingsDialog = nullptr;
                                 }),
                             true);
   }
@@ -528,7 +566,7 @@ void ChorusAudioProcessorEditor::showStandaloneOptionsMenu()
   if (window == nullptr) return;
 
   juce::PopupMenu menu;
-  menu.addItem(1, TRANS("Audio/MIDI Settings..."));
+  menu.addItem(1, TRANS("Settings..."));
   menu.addSeparator();
   menu.addItem(2, TRANS("Save current state..."));
   menu.addItem(3, TRANS("Load a saved state..."));
@@ -544,7 +582,7 @@ void ChorusAudioProcessorEditor::showStandaloneOptionsMenu()
 
         if (result == 1)
         {
-          if (safeEditor != nullptr) safeEditor->showAudioSettingsDialog();
+          if (safeEditor != nullptr) safeEditor->showAppSettingsDialog();
           return;
         }
 

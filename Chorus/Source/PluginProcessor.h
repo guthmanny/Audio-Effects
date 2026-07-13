@@ -1,7 +1,7 @@
 /*
   ==============================================================================
 
-    Chorus / Phase90 plugin — DSP via NuDSP camel.
+    Chorus / Phase90 plugin — DSP via minibuss Track + Processors.
 
   ==============================================================================
 */
@@ -15,13 +15,10 @@
 #include <vector>
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include "MinibussChorusEngine.h"
 #include "QPitchDetector.h"
 #include "SpectrumAnalyzer.h"
 #include "PluginParameter.h"
-#include "nudsp/extensions/camel/chorus.hpp"
-#include "nudsp/extensions/camel/phase90.hpp"
-#include "nudsp/amplitude/dry_wet.hpp"
-#include "nudsp/amplitude/dry_wet_f32.h"
 
 //==============================================================================
 
@@ -82,15 +79,22 @@ class ChorusAudioProcessor : public AudioProcessor
   // 公共参数（两个模型共用）
   PluginParameterLinSlider paramInputGain;
   PluginParameterLinSlider paramGateThreshold;
+  PluginParameterLinSlider paramGateThreshMin;
+  PluginParameterLinSlider paramGateThreshMax;
+  PluginParameterComboBox paramGateOffAtMin;
+  PluginParameterLinSlider paramGateRatio;
+  PluginParameterLinSlider paramGateAttack;
+  PluginParameterLinSlider paramGateRelease;
+  PluginParameterComboBox paramGateKnee;
+  PluginParameterLinSlider paramGateKneeWidth;
   PluginParameterLinSlider paramOutputGain;
   PluginParameterToggle paramBypass;
 
-  // Chorus 模型参数
+  // Chorus 模型参数（与 MonoChorusProcessor 反射 id 对齐）
   PluginParameterLinSlider paramChorusRate;
-  PluginParameterLinSlider paramPreDelay;
+  PluginParameterLinSlider paramChorusDelay;
   PluginParameterLinSlider paramChorusAmount;
-  PluginParameterLinSlider paramDry;
-  PluginParameterLinSlider paramWet;
+  PluginParameterLinSlider paramChorusWet;
   PluginParameterLinSlider paramChorusFeedback;
 
   // Phase90 模型参数
@@ -105,7 +109,7 @@ class ChorusAudioProcessor : public AudioProcessor
   float getMeterLevelRight() const noexcept { return meterRight.load(); }
 
   EffectModel getEffectModel() const noexcept { return currentModel.load(); }
-  void setEffectModel(EffectModel model) noexcept { currentModel.store(model); }
+  void setEffectModel(EffectModel model) noexcept;
 
   void setTunerEnabled(bool shouldEnable) noexcept;
   bool isTunerEnabled() const noexcept { return tunerEnabled.load(); }
@@ -130,27 +134,15 @@ class ChorusAudioProcessor : public AudioProcessor
   float readParameterValue(const String& paramId, float fallback) const;
   void syncParametersFromValueTree();
   void updateEffectParameters();
-  void ensureEffectInstances();
   void ensureScratchBuffers(int numChannels, int numSamples);
+  void pushAnalysisMono(const AudioSampleBuffer& buffer, int numChannels, int numSamples);
 
-  void processInputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
-  void processGate(AudioSampleBuffer& buffer, int numChannels, int numSamples, float thresholdDb);
-  void processOutputGain(AudioSampleBuffer& buffer, int numChannels, int numSamples, float gainDb);
-
-  // Chorus DSP
-  std::unique_ptr<nudsp::camel::ChorusF32> chorus;
-  std::array<std::unique_ptr<nudsp::DryWetF32>, maxChannels> dryWets;
+  MinibussChorusEngine minibussEngine;
   AudioSampleBuffer dryBuffer;
   AudioSampleBuffer monoBuffer;
-  AudioSampleBuffer chorusBuffer;
-
-  // Phase90 DSP
-  std::unique_ptr<nudsp::camel::Phase90F32> phase90;
-  AudioSampleBuffer phase90Buffer;
+  AudioSampleBuffer processBuffer;
 
   double currentSampleRate = 44100.0;
-  std::array<float, maxChannels> gateEnvelope{};
-  std::array<float, maxChannels> gateGain{1.0f, 1.0f};
 
   std::atomic<float> meterMono{0.0f};
   std::atomic<float> meterLeft{0.0f};

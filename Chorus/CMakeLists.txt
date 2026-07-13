@@ -61,8 +61,10 @@ juce_add_module(${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/modules/juce_atom_t
 
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
-add_subdirectory("${CMAKE_SOURCE_DIR}/../third_party/NuDSP"
-               "${CMAKE_BINARY_DIR}/NuDSP")
+# minibuss brings its own NuDSP submodule and exposes minibuss_plugin.
+add_subdirectory("${CMAKE_SOURCE_DIR}/../third_party/minibuss"
+                 "${CMAKE_BINARY_DIR}/minibuss"
+                 EXCLUDE_FROM_ALL)
 
 juce_add_plugin(Chorus
     PLUGIN_MANUFACTURER_CODE Juce
@@ -74,6 +76,7 @@ juce_add_plugin(Chorus
 juce_generate_juce_header(Chorus)
 
 set(ATOM_COLLECTIONS_APP_DIR "${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/demos/collections_app")
+set(MINIBUSS_DIR "${CMAKE_SOURCE_DIR}/../third_party/minibuss")
 
 target_sources(Chorus PRIVATE
     Source/PluginProcessor.cpp
@@ -92,6 +95,19 @@ target_sources(Chorus PRIVATE
     Source/SpectrumCurveComponent.h
     Source/SpectrumAnalyzer.h
     Source/QPitchDetector.h
+    Source/MinibussChorusEngine.cpp
+    Source/MinibussChorusEngine.h
+    Source/MonoChorusProcessor.cpp
+    Source/MonoChorusProcessor.h
+    Source/Phase90Processor.cpp
+    Source/Phase90Processor.h
+    Source/AppSettingsPanel.cpp
+    Source/AppSettingsPanel.h
+    Source/NoiseGateSettingsPanel.cpp
+    Source/NoiseGateSettingsPanel.h
+    Source/CompressorCurveComponent.cpp
+    Source/CompressorCurveComponent.h
+    Source/CompressorKnee.h
     Source/PluginParameter.h
     Source/StandaloneMain.cpp
     ${ATOM_COLLECTIONS_APP_DIR}/AudioSettingsPanel.cpp
@@ -100,6 +116,8 @@ target_sources(Chorus PRIVATE
 
 target_include_directories(Chorus PRIVATE
     "${ATOM_COLLECTIONS_APP_DIR}"
+    "${MINIBUSS_DIR}/include"
+    "${MINIBUSS_DIR}/src"
     /home/guthman/source/q/q_lib/include
     /home/guthman/source/q/infra/include
 )
@@ -134,12 +152,9 @@ target_link_libraries(Chorus PRIVATE
     juce::juce_audio_devices
     juce::juce_dsp
     juce::juce_atom_theme
-    nudsp
+    minibuss_plugin
     PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
 )
-
-
-

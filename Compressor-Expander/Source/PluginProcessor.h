@@ -95,11 +95,6 @@ private:
     void mixSidechain (const AudioSampleBuffer& buffer, int numInputChannels, int numSamples);
     void processCompressorMode (AudioSampleBuffer& buffer, int numInputChannels, int numSamples, float makeupGain, bool softKnee);
     void processExpanderMode (AudioSampleBuffer& buffer, int numInputChannels, int numSamples, float makeupGain, bool softKnee);
-    void processSoftKneeMode (AudioSampleBuffer& buffer,
-                              int numInputChannels,
-                              int numSamples,
-                              float makeupGainDb,
-                              bool expanderMode);
     float calculateAttackOrRelease (float timeSeconds) const;
     void updateTransferMeters (const AudioSampleBuffer& buffer,
                                int numInputChannels,

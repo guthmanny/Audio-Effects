@@ -9,6 +9,10 @@
 #include "SpectrumOverlayComponent.h"
 #include "TunerOverlayComponent.h"
 
+#if JucePlugin_Build_Standalone
+#include "AppSettingsPanel.h"
+#endif
+
 class ChorusBodyContent final : public juce::Component
 {
 public:
@@ -33,7 +37,7 @@ public:
 
 #if JucePlugin_Build_Standalone
     void showStandaloneOptionsMenu();
-    void showAudioSettingsDialog();
+    void showAppSettingsDialog (AppSettingsPanel::Page initialPage = AppSettingsPanel::Page::AudioSettings);
 #endif
 
     void updateModelUI();
@@ -44,7 +48,7 @@ private:
     void timerCallback() override;
 #if JucePlugin_Build_Standalone
     void darkModeSettingChanged() override;
-    void applyAudioSettingsDialogTitleBarTheme();
+    void applyAppSettingsDialogTitleBarTheme();
 #endif
     void applyZoom (float newZoom);
     int getEditorWidth();
@@ -79,10 +83,9 @@ private:
 
     // Chorus model slider pointers
     atom::Slider* chorusRateSlider = nullptr;
-    atom::Slider* preDelaySlider = nullptr;
+    atom::Slider* chorusDelaySlider = nullptr;
     atom::Slider* chorusAmountSlider = nullptr;
-    atom::Slider* drySlider = nullptr;
-    atom::Slider* wetSlider = nullptr;
+    atom::Slider* chorusWetSlider = nullptr;
     atom::Slider* chorusFeedbackSlider = nullptr;
 
     // Phase90 model slider pointers
@@ -107,7 +110,7 @@ private:
     juce::OwnedArray<ComboBoxAttachment> comboBoxAttachments;
 
 #if JucePlugin_Build_Standalone
-    juce::Component::SafePointer<juce::Component> audioSettingsDialog;
+    juce::Component::SafePointer<juce::DialogWindow> appSettingsDialog;
 #endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChorusAudioProcessorEditor)
