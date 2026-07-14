@@ -1,7 +1,6 @@
 #include "MonoChorusProcessor.h"
 
 #include <algorithm>
-#include <cassert>
 #include <chrono>
 
 #include "minibuss/parameter.hpp"
@@ -17,18 +16,25 @@ MonoChorusProcessor::MonoChorusProcessor (minibuss::HostContext* host)
     set_max_channels (2, 2);
     set_channels (2, 2);
 
+    // Must not wrap registration in assert(): Release builds define NDEBUG and
+    // strip assert expressions, so parameters would never be registered and
+    // setParamDomain would silently no-op (sliders move, tone unchanged).
     nx_chorus_config_t cfg {};
-    assert (nudsp::camel::ChorusF32::configInit (&cfg) == NX_SUCCESS);
-    assert (register_parameter (minibuss::make_parameter_from_control ("rate", "Rate", cfg.rate)) ==
-            minibuss::Status::Ok);
-    assert (register_parameter (minibuss::make_parameter_from_control ("delay", "Delay", cfg.delay)) ==
-            minibuss::Status::Ok);
-    assert (register_parameter (minibuss::make_parameter_from_control ("amount", "Amount", cfg.amount)) ==
-            minibuss::Status::Ok);
-    assert (register_parameter (minibuss::make_parameter_from_control ("coeff_fb", "Feedback", cfg.coeff_fb)) ==
-            minibuss::Status::Ok);
-    assert (register_parameter (minibuss::make_float_parameter ("wet", "Wet", "", 0.f, 1.f, 0.5f)) ==
-            minibuss::Status::Ok);
+    if (nudsp::camel::ChorusF32::configInit (&cfg) != NX_SUCCESS)
+        return;
+    if (register_parameter (minibuss::make_parameter_from_control ("rate", "Rate", cfg.rate)) !=
+            minibuss::Status::Ok
+        || register_parameter (minibuss::make_parameter_from_control ("delay", "Delay", cfg.delay)) !=
+               minibuss::Status::Ok
+        || register_parameter (minibuss::make_parameter_from_control ("amount", "Amount", cfg.amount)) !=
+               minibuss::Status::Ok
+        || register_parameter (minibuss::make_parameter_from_control ("coeff_fb", "Feedback", cfg.coeff_fb)) !=
+               minibuss::Status::Ok
+        || register_parameter (minibuss::make_float_parameter ("wet", "Wet", "", 0.f, 1.f, 0.5f)) !=
+               minibuss::Status::Ok)
+    {
+        return;
+    }
 
     for (std::size_t i = 0; i < params_norm_.size(); ++i)
     {
