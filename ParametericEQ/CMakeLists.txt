@@ -56,8 +56,34 @@ else()
     endif()
 endif()
 
-juce_add_module(${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/modules/juce_atom_theme
-                ALIAS_NAMESPACE juce)
+# ---------------------------------------------------------------------------
+# AtomTheme (https://github.com/guthmanny/AtomTheme) — JUCE UI theme module
+#
+# Resolution order:
+#   1. $ENV{HOME}/source/AtomTheme   — local development checkout
+#   2. FetchContent from GitHub      — automatic download for third-party builds
+# ---------------------------------------------------------------------------
+include(FetchContent)
+
+set(ATOM_THEME_LOCAL "$ENV{HOME}/source/AtomTheme")
+if(EXISTS "${ATOM_THEME_LOCAL}/CMakeLists.txt")
+    message(STATUS "AtomTheme found at ${ATOM_THEME_LOCAL} — using local checkout")
+    juce_add_module("${ATOM_THEME_LOCAL}/modules/juce_atom_theme"
+                    ALIAS_NAMESPACE juce)
+    set(ATOM_COLLECTIONS_APP_DIR "${ATOM_THEME_LOCAL}/demos/collections_app")
+else()
+    message(STATUS "AtomTheme not found locally — fetching from GitHub")
+    FetchContent_Declare(
+        AtomTheme
+        GIT_REPOSITORY  https://github.com/guthmanny/AtomTheme.git
+        GIT_TAG         main
+        GIT_SHALLOW     TRUE
+    )
+    FetchContent_MakeAvailable(AtomTheme)
+    juce_add_module("${AtomTheme_SOURCE_DIR}/modules/juce_atom_theme"
+                    ALIAS_NAMESPACE juce)
+    set(ATOM_COLLECTIONS_APP_DIR "${AtomTheme_SOURCE_DIR}/demos/collections_app")
+endif()
 
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
@@ -72,8 +98,6 @@ juce_add_plugin(ParametricEQ
 )
 
 juce_generate_juce_header(ParametricEQ)
-
-set(ATOM_COLLECTIONS_APP_DIR "${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/demos/collections_app")
 
 target_sources(ParametricEQ PRIVATE
     Source/PluginProcessor.cpp

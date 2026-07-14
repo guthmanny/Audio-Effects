@@ -56,15 +56,66 @@ else()
     endif()
 endif()
 
-juce_add_module(${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/modules/juce_atom_theme
-                ALIAS_NAMESPACE juce)
+# ---------------------------------------------------------------------------
+# AtomTheme (https://github.com/guthmanny/AtomTheme) — JUCE UI theme module
+#
+# Resolution order:
+#   1. $ENV{HOME}/source/AtomTheme   — local development checkout
+#   2. FetchContent from GitHub      — automatic download for third-party builds
+# ---------------------------------------------------------------------------
+include(FetchContent)
 
-set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
-# minibuss brings its own NuDSP submodule and exposes minibuss_plugin.
-add_subdirectory("${CMAKE_SOURCE_DIR}/../third_party/minibuss"
-                 "${CMAKE_BINARY_DIR}/minibuss"
-                 EXCLUDE_FROM_ALL)
+set(ATOM_THEME_LOCAL "$ENV{HOME}/source/AtomTheme")
+if(EXISTS "${ATOM_THEME_LOCAL}/CMakeLists.txt")
+    message(STATUS "AtomTheme found at ${ATOM_THEME_LOCAL} — using local checkout")
+    juce_add_module("${ATOM_THEME_LOCAL}/modules/juce_atom_theme"
+                    ALIAS_NAMESPACE juce)
+    set(ATOM_COLLECTIONS_APP_DIR "${ATOM_THEME_LOCAL}/demos/collections_app")
+else()
+    message(STATUS "AtomTheme not found locally — fetching from GitHub")
+    FetchContent_Declare(
+        AtomTheme
+        GIT_REPOSITORY  https://github.com/guthmanny/AtomTheme.git
+        GIT_TAG         main
+        GIT_SHALLOW     TRUE
+    )
+    FetchContent_MakeAvailable(AtomTheme)
+    juce_add_module("${AtomTheme_SOURCE_DIR}/modules/juce_atom_theme"
+                    ALIAS_NAMESPACE juce)
+    set(ATOM_COLLECTIONS_APP_DIR "${AtomTheme_SOURCE_DIR}/demos/collections_app")
+endif()
+
+# ---------------------------------------------------------------------------
+# minibuss (https://github.com/guthmanny/minibuss) — audio plugin host engine
+#
+# Resolution order:
+#   1. $ENV{HOME}/source/minibuss   — local development checkout
+#   2. FetchContent from GitHub     — automatic download for third-party builds
+# ---------------------------------------------------------------------------
+include(FetchContent)
+
+set(MINIBUSS_LOCAL "$ENV{HOME}/source/minibuss")
+if(EXISTS "${MINIBUSS_LOCAL}/CMakeLists.txt")
+    message(STATUS "minibuss found at ${MINIBUSS_LOCAL} — using local checkout")
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+    add_subdirectory("${MINIBUSS_LOCAL}"
+                     "${CMAKE_BINARY_DIR}/minibuss"
+                     EXCLUDE_FROM_ALL)
+else()
+    message(STATUS "minibuss not found locally — fetching from GitHub")
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        minibuss
+        GIT_REPOSITORY  https://github.com/guthmanny/minibuss.git
+        GIT_TAG         main
+        GIT_SHALLOW     TRUE
+    )
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(minibuss)
+endif()
 
 juce_add_plugin(Chorus
     PLUGIN_MANUFACTURER_CODE Juce
@@ -76,8 +127,14 @@ juce_add_plugin(Chorus
 
 juce_generate_juce_header(Chorus)
 
-set(ATOM_COLLECTIONS_APP_DIR "${CMAKE_SOURCE_DIR}/../third_party/AtomTheme/demos/collections_app")
-set(MINIBUSS_DIR "${CMAKE_SOURCE_DIR}/../third_party/minibuss")
+# MINIBUSS_DIR resolves to the source tree root of minibuss.
+# When using a local checkout (MINIBUSS_LOCAL), point there directly.
+# When fetched via FetchContent, use minibuss_SOURCE_DIR.
+if(EXISTS "${MINIBUSS_LOCAL}/CMakeLists.txt")
+    set(MINIBUSS_DIR "${MINIBUSS_LOCAL}")
+else()
+    set(MINIBUSS_DIR "${minibuss_SOURCE_DIR}")
+endif()
 
 target_sources(Chorus PRIVATE
     Source/PluginProcessor.cpp
