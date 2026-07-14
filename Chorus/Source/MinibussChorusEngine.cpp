@@ -1,6 +1,7 @@
 #include "MinibussChorusEngine.h"
 
 #include <cassert>
+#include <cmath>
 
 #include "MonoChorusProcessor.h"
 #include "Phase90Processor.h"
@@ -40,8 +41,23 @@ void MinibussChorusEngine::setParamDomain (minibuss::ObjectId processorId,
                                            std::string_view paramId,
                                            float domainValue)
 {
-    if (auto* proc = processor (processorId))
-        proc->set_parameter_domain_by_id (paramId, domainValue);
+    auto* proc = processor (processorId);
+    if (proc == nullptr)
+        return;
+
+    const auto* desc = proc->parameter (paramId);
+    if (desc == nullptr)
+        return;
+
+    // 去重：仅在归一化值真正变化时才下推。processBlock 每块都会调用本函数，
+    // 无条件下推会让 NuDSP 每块重置 config（平滑器被 snap），产生调参噪声。
+    const float normalized = desc->normalize (domainValue);
+    float current = 0.f;
+    if (proc->get_parameter (desc->index, current) == minibuss::Status::Ok
+        && std::abs (current - normalized) <= 1.0e-7f)
+        return;
+
+    (void) proc->set_parameter (desc->index, normalized);
 }
 
 const minibuss::ParameterDescriptor* MinibussChorusEngine::paramDescriptor (
