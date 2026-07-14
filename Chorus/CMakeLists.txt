@@ -157,8 +157,6 @@ target_sources(Chorus PRIVATE
     Source/MinibussChorusEngine.h
     Source/MonoChorusProcessor.cpp
     Source/MonoChorusProcessor.h
-    Source/Phase90Processor.cpp
-    Source/Phase90Processor.h
     Source/AppSettingsPanel.cpp
     Source/AppSettingsPanel.h
     Source/NoiseGateSettingsPanel.cpp

@@ -4,7 +4,6 @@
 #include <cmath>
 
 #include "MonoChorusProcessor.h"
-#include "Phase90Processor.h"
 #include "plugins/builtin_plugins.hpp"
 
 MinibussChorusEngine::MinibussChorusEngine() = default;
@@ -79,13 +78,6 @@ void MinibussChorusEngine::prepare (float sampleRate, std::uint32_t maxBlockSize
         [] (minibuss::HostContext* host)
         {
             return std::make_unique<chorus_plugin::MonoChorusProcessor> (host);
-        }
-    });
-    staticFormat->register_plugin ({
-        chorus_plugin::Phase90Processor::make_description(),
-        [] (minibuss::HostContext* host)
-        {
-            return std::make_unique<chorus_plugin::Phase90Processor> (host);
         }
     });
     formats_.add_format (std::move (staticFormat));
