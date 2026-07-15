@@ -155,8 +155,6 @@ target_sources(Chorus PRIVATE
     Source/QPitchDetector.h
     Source/MinibussChorusEngine.cpp
     Source/MinibussChorusEngine.h
-    Source/MonoChorusProcessor.cpp
-    Source/MonoChorusProcessor.h
     Source/AppSettingsPanel.cpp
     Source/AppSettingsPanel.h
     Source/NoiseGateSettingsPanel.cpp

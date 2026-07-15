@@ -3,7 +3,6 @@
 #include <cassert>
 #include <cmath>
 
-#include "MonoChorusProcessor.h"
 #include "plugins/builtin_plugins.hpp"
 
 MinibussChorusEngine::MinibussChorusEngine() = default;
@@ -73,13 +72,6 @@ void MinibussChorusEngine::prepare (float sampleRate, std::uint32_t maxBlockSize
 
     auto staticFormat = std::make_unique<minibuss::StaticPluginFormat>();
     minibuss::plugins::register_builtin_plugins (*staticFormat);
-    staticFormat->register_plugin ({
-        chorus_plugin::MonoChorusProcessor::make_description(),
-        [] (minibuss::HostContext* host)
-        {
-            return std::make_unique<chorus_plugin::MonoChorusProcessor> (host);
-        }
-    });
     formats_.add_format (std::move (staticFormat));
 
     engine_ = std::make_unique<minibuss::AudioEngine> (2, maxBlockSize);
